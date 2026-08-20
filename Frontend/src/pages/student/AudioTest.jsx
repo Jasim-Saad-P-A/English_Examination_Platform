@@ -16,7 +16,6 @@ import {
 } from "../../utils/helpers";
 import { syncExam, submitExam, reportMalpractice } from "../../services/studentService";
 
-
 export default function AudioTest() {
 
     const navigate = useNavigate();
@@ -30,6 +29,7 @@ export default function AudioTest() {
     const examClosedRef = useRef(false);
     const [questions, setQuestions] = useState([]);
     const [answers, setAnswers] = useState({});
+    const [syncingQuestions, setSyncingQuestions] = useState({});
     const [playCount, setPlayCount] = useState(0);
     const [submitted, setSubmitted] = useState(false);
     const [isRestored, setIsRestored] = useState(false);
@@ -57,7 +57,6 @@ export default function AudioTest() {
                 await document.documentElement.requestFullscreen();
             }
             return true;
-
         } catch (error) {
 
             console.error(
