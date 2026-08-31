@@ -29,13 +29,7 @@ const NAV_ITEMS = [
     location: "/admin/dashboard",
   },
 
-  {
-    key: "faculty",
-    label: "Faculty",
-    icon: Users,
-    adminOnly: true,
-
-  },
+  
 
       {
         key: "faculty-list",
