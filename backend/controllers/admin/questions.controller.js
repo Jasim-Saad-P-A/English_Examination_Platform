@@ -1,5 +1,5 @@
-const parseExcel = require("../utils/parseExcel");
-const { getDB } = require("../config/db");
+const parseExcel = require("../../utils/parseExcel");
+const { getDB } = require("../../config/db");
 
 const questionsupload = async (req, res) => {
 

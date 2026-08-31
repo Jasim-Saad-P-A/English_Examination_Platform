@@ -1,6 +1,6 @@
 const { ObjectId } = require("mongodb");
-const { getDB } = require("../config/db");
-const { toIST } = require("../helper/ist_converter");
+const { getDB } = require("../../config/db");
+const { toIST } = require("../../helper/ist_converter");
 
 const scheduleExam = async (req, res) => {
     try {
@@ -173,8 +173,6 @@ const scheduleExam = async (req, res) => {
         // =====================================================
 
         const normalizedSemester =semester;
-        console.log(normalizedSemester!="even");
-        console.log(normalizedSemester!="odd");
 
         if (
             normalizedSemester !="odd" &&

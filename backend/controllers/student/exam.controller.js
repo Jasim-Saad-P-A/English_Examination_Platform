@@ -1,5 +1,5 @@
 const { ObjectId } = require("mongodb");
-const { getDB } = require("../config/db");
+const { getDB } = require("../../config/db");
 
 // =====================================================
 // START EXAM
