@@ -6,7 +6,7 @@ const questionsupload = async (req, res) => {
     try {
 
         const { questionCode } = req.body;
-        const { audio } = req.uploadedData;
+        const { audio, audioDurationMinutes } = req.uploadedData;
 
         
 
@@ -29,6 +29,7 @@ const questionsupload = async (req, res) => {
             questionCode: questionCode.trim(),
 
             
+            audioDurationMinutes: audioDurationMinutes,
 
             audioUrl: audio.url,
 

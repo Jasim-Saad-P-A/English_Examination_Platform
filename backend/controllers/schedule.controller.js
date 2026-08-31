@@ -327,7 +327,14 @@ const scheduleExam = async (req, res) => {
                     "Question set not found."
             });
         }
+        const requiredDuration = questionSet.audioDurationMinutes * 2;
 
+        if (Number(duration) < requiredDuration) {
+            return res.status(400).json({
+                success: false,
+                message: `Duration must be at least ${requiredDuration} minutes.`
+            });
+        }   
         // =====================================================
         // DUPLICATE SCHEDULE CHECK
         // =====================================================

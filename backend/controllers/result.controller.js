@@ -84,12 +84,12 @@ const generateExamReport = async (req, res) => {
     const isUniversityReport = cleanCategory === "university";
 
     const signLeftLabel = isUniversityReport
-      ? "Internal Examiner's Sign"
-      : "Staff's Sign";
+      ? "Internal Examiner's Signature"
+      : "Staff's Signature";
 
     const signRightLabel = isUniversityReport
-      ? "External Examiner's Sign"
-      : "HOD's Sign";
+      ? "External Examiner's Signature"
+      : "HOD's Signature";
 
     console.log("isUniversityReport:", isUniversityReport);
 
@@ -297,7 +297,7 @@ const generateExamReport = async (req, res) => {
     // ====================================================
     const extraHeaderCells = testColumns
       .map((col) => `<th>${col.label}</th>`)
-      .join("");
+      .join("")+'<th>Marks</th>';
 
     // ====================================================
     // GENERATE TABLE ROWS
@@ -305,7 +305,7 @@ const generateExamReport = async (req, res) => {
     const rows = studentRoster
       .map((student, index) => {
         const studentTests = examMap.get(student.admissionNo);
-
+let total = 0;
         const marksCells = testColumns
           .map((col) => {
             const entry = studentTests
@@ -320,6 +320,7 @@ const generateExamReport = async (req, res) => {
                 markDisplay = entry.normal;
               }
             }
+            if(markDisplay!="AB") total+=markDisplay;
 
             return `<td>${markDisplay}</td>`;
           })
@@ -331,6 +332,7 @@ const generateExamReport = async (req, res) => {
                         <td>${student.admissionNo || "-"}</td>
                         <td class="name">${student.name || "-"}</td>
                         ${marksCells}
+                        <td>${total=='AB' ? total: total+'/10' }</td>
                     </tr>
                 `;
       })
@@ -387,7 +389,7 @@ const generateExamReport = async (req, res) => {
     // ====================================================
     // GET LOGO FROM LOCAL FILE
     // ====================================================
-    const logoPath = path.join(__dirname, "../assets/vec-logo.png");
+    const logoPath = path.join(__dirname, "../assets/logo.png");
     let logoBase64;
 
     try {
