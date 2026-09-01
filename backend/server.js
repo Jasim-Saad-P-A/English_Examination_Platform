@@ -41,7 +41,7 @@ app.use(express.urlencoded({ extended: true }));
 
 
 
-app.use(xssSanitizer);
+// app.use(xssSanitizer);
 // NoSQL Injection Protection
 app.use(secureNoSQLMiddleware);
 
