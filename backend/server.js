@@ -9,7 +9,7 @@ const secureNoSQLMiddleware =
 
 const scheduleMongoHealthCheck =
     require("./middleware/security/mongo_health_check");
-const xssSanitizer = require("./middleware/security/xss");
+// const xssSanitizer = require("./middleware/security/xss");
 
 const indexRoutes = require("./routes/index.routes");
 const startExamCron =
