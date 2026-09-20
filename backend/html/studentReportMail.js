@@ -1,4 +1,4 @@
-const getEmailTemplate = (studentName, examTitle, questionCode) => {
+const getEmailTemplate = (studentName, examTitle, questionCode, isMalpractice = false) => {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -98,94 +98,86 @@ const getEmailTemplate = (studentName, examTitle, questionCode) => {
 
 
     /* =========================
-       REPORT TITLE
+       REPORT SECTION
     ========================== */
 
     .report-section {
-      background-color: #fafafa;
       text-align: center;
-      padding: 28px 25px;
-      border-bottom: 1px solid #eeeeee;
+      padding: 22px 20px 15px;
+      background-color: #ffffff;
     }
 
     .report-label {
-      color: #a36f00;
+      display: inline-block;
       font-size: 11px;
       font-weight: bold;
       letter-spacing: 2px;
-      margin-bottom: 8px;
+      text-transform: uppercase;
+      color: #5b2b1f;
+      background-color: #fdf3d8;
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: 1px solid #f4c400;
     }
 
     .report-title {
-      margin: 0;
-      color: #7b0f1c;
-      font-size: 23px;
-      font-weight: 700;
-      line-height: 1.4;
+      margin: 10px 0 0;
+      color: #1a1a1a;
+      font-size: 20px;
+      font-weight: 600;
     }
 
 
     /* =========================
-       EMAIL CONTENT
+       CONTENT
     ========================== */
 
     .content {
-      padding: 32px 38px;
-    }
-
-    .content p {
-      font-size: 15px;
-      line-height: 1.7;
-      color: #555555;
+      padding: 10px 30px 25px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #444444;
     }
 
     .student-name {
-      color: #7b0f1c;
-      font-weight: bold;
+      font-weight: 600;
+      color: #1a1a1a;
     }
 
-
-    /* =========================
-       ATTACHMENT BOX
-    ========================== */
-
     .attachment-box {
-      margin: 25px 0;
-      padding: 20px;
-      background-color: #fffaf0;
+      background-color: #fcfcfc;
+      border: 1px solid #e5e7eb;
       border-left: 4px solid #f4c400;
-      border-radius: 5px;
+      border-radius: 4px;
+      padding: 14px 16px;
+      margin: 20px 0;
     }
 
     .attachment-title {
-      margin: 0 0 8px;
-      color: #7b0f1c;
-      font-size: 16px;
-      font-weight: bold;
+      font-weight: 600;
+      color: #1a1a1a;
+      font-size: 14px;
+      margin-bottom: 4px;
     }
 
     .attachment-text {
       margin: 0;
+      font-size: 13px;
       color: #555555;
-      font-size: 14px;
-      line-height: 1.6;
     }
 
-
-    /* =========================
-       INFORMATION BOX
-    ========================== */
-
     .info-box {
-      margin-top: 25px;
-      padding: 16px 18px;
-      background-color: #f8f8f8;
-      border-left: 4px solid #7b0f1c;
+      background-color: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin: 15px 0 20px;
+      font-size: 13px;
+      color: #666666;
     }
 
     .info-box p {
       margin: 0;
-      font-size: 14px;
     }
 
 
@@ -194,47 +186,29 @@ const getEmailTemplate = (studentName, examTitle, questionCode) => {
     ========================== */
 
     .footer {
-      background-color: #f7f7f7;
+      background-color: #fafafa;
+      border-top: 1px solid #eeeeee;
+      padding: 20px 30px;
       text-align: center;
-      padding: 25px 20px;
-      border-top: 4px solid #f4c400;
+      font-size: 12px;
+      color: #888888;
+      line-height: 1.5;
     }
 
-    .footer-address {
-      margin: 0 0 15px;
-      color: #666666;
-      font-size: 12px;
-      line-height: 1.7;
+    .footer p {
+      margin: 4px 0;
     }
 
     .footer-divider {
-      border: none;
-      border-top: 1px solid #dddddd;
-      width: 75%;
-      margin: 15px auto;
+      margin: 8px auto;
+      width: 40px;
+      height: 1px;
+      background-color: #dddddd;
     }
 
-    .footer-reference {
-      margin: 0;
-      color: #777777;
-      font-size: 12px;
-    }
-
-.webops-link {
-      color: #800000 !important; /* Dark Red */
-      font-weight: bold;
-      text-decoration: none;
-      transition: color 0.3s ease;
-    }
-
-    .webops-link:hover {
-      color: #f4c400 !important; /* Yellow hover effect */
-    }
-
-    .copyright {
-      margin-top: 12px;
-      color: #999999;
-      font-size: 11px;
+    .footer-dept {
+      color: #5b2b1f;
+      font-weight: 600;
     }
 
 
@@ -288,13 +262,11 @@ const getEmailTemplate = (studentName, examTitle, questionCode) => {
 
       <div class="header">
 
-        <!-- Replace with your actual hosted logo URL -->
-
         <img
           class="header-logo"
-          src="https://velammal.edu.in/static/media/NEWLOGO.0a50cf7beb701e4ade9f.png"
-          alt="Velammal Engineering College Logo"
-        >
+          src="https://vec-examination-platform.s3.ap-south-1.amazonaws.com/assets/logo.png"
+          alt="Velammal Logo"
+        />
 
         <h1 class="college-title-main">
           VELAMMAL
@@ -346,6 +318,17 @@ const getEmailTemplate = (studentName, examTitle, questionCode) => {
             ${studentName || "Student"}
           </span>,
         </p>
+
+        ${
+          isMalpractice
+            ? `
+        <div style="background-color: #fef2f2; border: 2px solid #ef4444; border-radius: 6px; padding: 14px 18px; margin: 15px 0; text-align: center;">
+          <div style="color: #991b1b; font-weight: bold; font-size: 15px; letter-spacing: 0.5px;">⚠️ MALPRACTICE DETECTED — CANDIDATE DISQUALIFIED</div>
+          <div style="color: #b91c1c; font-size: 12px; margin-top: 5px;">This examination session was terminated and recorded as malpractice due to security violations. Assessment result is marked as Disqualified.</div>
+        </div>
+        `
+            : ""
+        }
 
 
         <p>

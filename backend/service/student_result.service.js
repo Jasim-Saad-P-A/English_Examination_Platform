@@ -435,18 +435,26 @@ const generateStudentExamPDF = async (testId, admissionNo ) => {
     // SUMMARY VALUES
     // ====================================================
 
+    const isMalpractice =
+      examAttempt.result === "Malpractice" ||
+      examAttempt.malpractice?.status === true;
+
     const totalQuestions = questions.length;
 
     const totalMarks = examAttempt.totalMarks ?? totalQuestions;
 
-    const obtainedMarks = examAttempt.obtainedMarks ?? correctCount;
+    const obtainedMarks = isMalpractice
+      ? 0
+      : examAttempt.obtainedMarks ?? correctCount;
 
-    const percentage =
-      examAttempt.percentage ??
-      (totalMarks > 0 ? ((obtainedMarks / totalMarks) * 100).toFixed(2) : 0);
+    const percentage = isMalpractice
+      ? "0.00"
+      : examAttempt.percentage ??
+        (totalMarks > 0 ? ((obtainedMarks / totalMarks) * 100).toFixed(2) : 0);
 
-    const result =
-      examAttempt.result || (Number(percentage) >= 50 ? "Pass" : "Fail");
+    const result = isMalpractice
+      ? "Malpractice"
+      : examAttempt.result || (Number(percentage) >= 50 ? "Pass" : "Fail");
 
     // ====================================================
     // HTML
@@ -899,6 +907,49 @@ body {
 }
 
 
+/* ==========================================================
+   MALPRACTICE STYLES
+   ========================================================== */
+
+.malpractice-banner {
+    background: #fef2f2;
+    border: 2px solid #ef4444;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.malpractice-title {
+    color: #991b1b;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+}
+
+.malpractice-desc {
+    color: #b91c1c;
+    font-size: 10px;
+    margin-top: 3px;
+}
+
+.summary-box-malpractice {
+    background: #fee2e2 !important;
+    border: 2px solid #ef4444 !important;
+}
+
+.badge-malpractice {
+    display: inline-block;
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1.5px solid #ef4444;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 9.5px;
+    letter-spacing: 0.5px;
+}
+
 </style>
 
 </head>
@@ -1029,15 +1080,30 @@ body {
         </div>
 
 
-        
+        <div class="student-field">
 
+            <strong>Status:</strong>
 
-        
+            ${isMalpractice ? '<span class="badge-malpractice">MALPRACTICE</span>' : '<span>Attended</span>'}
+
+        </div>
 
 
     </div>
 
 </div>
+
+
+${
+  isMalpractice
+    ? `
+<div class="malpractice-banner">
+    <div class="malpractice-title">⚠️ MALPRACTICE DETECTED — CANDIDATE DISQUALIFIED</div>
+    <div class="malpractice-desc">This examination was terminated due to security violations / malpractice detected during the assessment. Assessment result is marked as Disqualified.</div>
+</div>
+`
+    : ""
+}
 
 
 <!-- ========================================================
@@ -1108,27 +1174,27 @@ body {
         </div>
 
 
-        <div class="summary-box">
+        <div class="summary-box ${isMalpractice ? 'summary-box-malpractice' : ''}">
 
-            <span class="summary-value">
-                ${obtainedMarks}/${totalMarks}
+            <span class="summary-value" ${isMalpractice ? 'style="color: #b91c1c;"' : ''}>
+                ${isMalpractice ? '0/' + totalMarks : `${obtainedMarks}/${totalMarks}`}
             </span>
 
-            <span class="summary-label">
-                MARKS
+            <span class="summary-label" ${isMalpractice ? 'style="color: #991b1b; font-weight: bold;"' : ''}>
+                MARKS ${isMalpractice ? '(DISQUALIFIED)' : ''}
             </span>
 
         </div>
 
 
-        <div class="summary-box">
+        <div class="summary-box ${isMalpractice ? 'summary-box-malpractice' : ''}">
 
-            <span class="summary-value">
-                ${percentage}%
+            <span class="summary-value" ${isMalpractice ? 'style="color: #b91c1c;"' : ''}>
+                ${isMalpractice ? 'MALPRACTICE' : `${percentage}%`}
             </span>
 
-            <span class="summary-label">
-                RESULT: ${escapeHtml(result)}
+            <span class="summary-label" ${isMalpractice ? 'style="color: #991b1b; font-weight: bold;"' : ''}>
+                RESULT: ${isMalpractice ? 'DISQUALIFIED' : escapeHtml(result)}
             </span>
 
         </div>
@@ -1232,6 +1298,7 @@ ${questionHTML}
         questions,
         pdfBuffer,
         filename,
+        isMalpractice,
       }),
     );
 

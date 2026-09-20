@@ -129,6 +129,26 @@
             font-size: 12px;
             font-weight: bold;
         }
+
+        /* ==========================
+           MALPRACTICE STYLES
+           ========================== */
+        .malpractice-badge {
+            display: inline-block;
+            background-color: #fee2e2;
+            color: #b91c1c;
+            border: 1.5px solid #ef4444;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 10.5px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .malpractice-cell {
+            background-color: #fff1f2 !important;
+        }
     </style>
 </head>
 
@@ -209,11 +229,14 @@
     </table>
 
 
-    <div class="summary">
-
-        <strong>Total Students:</strong>
-        {{TOTAL_STUDENTS}}
-
+    <div class="summary" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <strong>Total Students:</strong>
+            {{TOTAL_STUDENTS}}
+        </div>
+        <div style="font-size: 11px; color: #b91c1c;">
+            <span class="malpractice-badge">M</span> : Malpractice (Disqualified)
+        </div>
     </div>
 
 

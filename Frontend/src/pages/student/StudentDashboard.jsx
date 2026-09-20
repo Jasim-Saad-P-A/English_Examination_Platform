@@ -338,11 +338,19 @@ const StudentDashboard = () => {
             // Category for report control
             category: String(exam.category || exam.cie || "").toLowerCase(),
 
+            // Exam type (audio vs comprehension)
+            type: exam.type || "audio",
+
+            // Result status
+            result: exam.result || "Pending",
+
             // Existing Mark column
             mark:
-              exam.obtainedMarks !== undefined && exam.totalMarks !== undefined
-                ? `${exam.obtainedMarks}/${exam.totalMarks}`
-                : "-",
+              exam.result === "Malpractice"
+                ? "Malpractice"
+                : exam.obtainedMarks !== undefined && exam.totalMarks !== undefined
+                  ? `${exam.obtainedMarks}/${exam.totalMarks}`
+                  : "-",
 
             status: sentTestIds.includes(testId) ? "Sent" : "Pending",
           };
@@ -671,9 +679,20 @@ const StudentDashboard = () => {
                       </td>
 
                       <td className="py-4 px-6 font-bold text-gray-900">
-                        <span className="bg-gray-100 group-hover:bg-white px-2.5 py-1 rounded-md border border-gray-200 text-sm transition-colors">
-                          {test.questionCode}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="bg-gray-100 group-hover:bg-white px-2.5 py-1 rounded-md border border-gray-200 text-sm transition-colors">
+                            {test.questionCode}
+                          </span>
+                          {test.type === "comprehension" ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-medium">
+                              📖 Reading
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 font-medium">
+                              🎧 Audio
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-4 px-6 text-gray-600 font-medium">
@@ -681,19 +700,37 @@ const StudentDashboard = () => {
                       </td>
 
                       <td className="py-4 px-6">
-                        <span className="font-bold text-gray-900 text-lg">
-                          {test.mark !== "-" ? test.mark.split("/")[0] : "-"}
-                        </span>
-                        {test.mark !== "-" && (
-                          <span className="text-gray-400 text-sm font-medium">
-                            /{test.mark.split("/")[1]}
+                        {test.mark === "Malpractice" || test.result === "Malpractice" ? (
+                          <span
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-200"
+                            title="Malpractice"
+                          >
+                            M
                           </span>
+                        ) : (
+                          <>
+                            <span className="font-bold text-gray-900 text-lg">
+                              {test.mark !== "-" ? test.mark.split("/")[0] : "-"}
+                            </span>
+                            {test.mark !== "-" && (
+                              <span className="text-gray-400 text-sm font-medium">
+                                /{test.mark.split("/")[1]}
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
 
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end">
-                          {test.category === "university" ? (
+                          {test.mark === "Malpractice" || test.result === "Malpractice" ? (
+                            <span
+                              className="text-red-600 text-xs font-bold px-3 py-1.5 bg-red-50 border border-red-200 rounded-full"
+                              title="Exam closed due to malpractice"
+                            >
+                              Disqualified
+                            </span>
+                          ) : test.category === "university" ? (
                             <span
                               className="text-gray-400 text-xs font-semibold px-3 py-1.5 bg-gray-100 rounded-full"
                               title="Reports are not generated for university examinations"

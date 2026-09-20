@@ -20,16 +20,35 @@ export const syncExam = async ({
     testId,
     admissionNo,
     questionNo,
-    studentAnswer
+    studentAnswer,
+    timeRemaining,
 }) => {
-
     const response = await api.post(
         `${API_URL}/examsync`,
         {
             testId,
             admissionNo,
             questionNo,
-            studentAnswer
+            studentAnswer,
+            timeRemaining,
+        }
+    );
+
+    return response.data;
+};
+
+// PERIODIC TIME SYNC
+export const syncExamTime = async ({
+    testId,
+    admissionNo,
+    timeRemaining,
+}) => {
+    const response = await api.post(
+        `${API_URL}/examsync`,
+        {
+            testId,
+            admissionNo,
+            timeRemaining,
         }
     );
 
@@ -55,15 +74,16 @@ export const submitExam = async ({
 export const reportMalpractice = async ({
     testId,
     admissionNo,
-    reason
+    reason,
+    timeRemaining,
 }) => {
-
     const response = await api.post(
         `${API_URL}/malpractice`,
         {
             testId,
             admissionNo,
-            reason
+            reason,
+            timeRemaining,
         }
     );
 

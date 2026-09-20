@@ -693,7 +693,7 @@ export default function Schedule() {
   );
 
   const selectedTestAudioDuration = useMemo(() => {
-    if (!selectedTest) return null;
+    if (!selectedTest || selectedTest.type === "comprehension") return null;
     const dur = Number(selectedTest.audioDurationMinutes ?? selectedTest.duration ?? 0);
     return dur > 0 ? dur : null;
   }, [selectedTest]);
@@ -703,9 +703,13 @@ export default function Schedule() {
     if (!newCode) return;
     const test = TEST_CODE_OPTIONS.find((t) => t.questionCode === newCode);
     if (test) {
-      const qDuration = Number(test.audioDurationMinutes ?? test.duration ?? 0);
-      const autoDuration = Math.ceil(qDuration * 2) + 5;
-      setDuration(String(autoDuration));
+      if (test.type === "comprehension") {
+        setDuration((prev) => prev || "30");
+      } else {
+        const qDuration = Number(test.audioDurationMinutes ?? test.duration ?? 0);
+        const autoDuration = Math.ceil(qDuration * 2) + 5;
+        setDuration(String(autoDuration));
+      }
     }
   };
 
@@ -776,8 +780,12 @@ export default function Schedule() {
         (t) => t.questionCode === d.questionCode,
       );
       if (test) {
-        const qDuration = Number(test.audioDurationMinutes ?? test.duration ?? 0);
-        setDuration(String(Math.ceil(qDuration * 2) + 5));
+        if (test.type === "comprehension") {
+          setDuration((prev) => prev || "30");
+        } else {
+          const qDuration = Number(test.audioDurationMinutes ?? test.duration ?? 0);
+          setDuration(String(Math.ceil(qDuration * 2) + 5));
+        }
       } else {
         setDuration("");
       }
@@ -1718,6 +1726,32 @@ export default function Schedule() {
                     placeholder="Select Test Code"
                     loading={isLoadingScheduleData}
                   />
+                  {selectedTest && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                          selectedTest.type === "comprehension"
+                            ? "bg-amber-100 text-amber-900 border border-amber-300"
+                            : "bg-blue-100 text-blue-900 border border-blue-300"
+                        }`}
+                      >
+                        {selectedTest.type === "comprehension"
+                          ? "📖 Reading Comprehension"
+                          : "🎧 Audio Listening"}
+                      </span>
+                      {selectedTest.type === "comprehension" ? (
+                        <span className="text-xs text-gray-500">
+                          Passage reading test
+                        </span>
+                      ) : (
+                        selectedTestAudioDuration && (
+                          <span className="text-xs text-gray-500">
+                            Audio: {selectedTestAudioDuration}m
+                          </span>
+                        )
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="min-w-0">

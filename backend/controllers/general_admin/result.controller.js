@@ -3,6 +3,8 @@ const {
   getStoredClassReport,
   countAvailableTestsForClass,
   checkNewTestAssignedAfterReport,
+  isAnyExamOngoingForClass,
+  hasUnrecordedCompleteTest,
 } = require("../../service/class_report.service");
 
 // ============================================================
@@ -61,6 +63,29 @@ const generateExamReport = async (req, res) => {
       });
 
       if (storedReport && storedReport.url) {
+        // Check if any exam is currently ongoing (not completed) for this class
+        const isExamOngoing = await isAnyExamOngoingForClass({
+          batch,
+          department,
+          section,
+          semester,
+          category: normalizedCategory,
+          cie: effectiveCie,
+          academicYear,
+        });
+
+        // Check if any completed test is unrecorded or updated after the stored report was generated
+        const hasUnrecordedComplete = await hasUnrecordedCompleteTest({
+          batch,
+          department,
+          section,
+          semester,
+          category: normalizedCategory,
+          cie: effectiveCie,
+          academicYear,
+          storedReport,
+        });
+
         // Check if any test was assigned, scheduled, or submitted AFTER the saved result timestamp
         const hasNewTestAssigned = await checkNewTestAssignedAfterReport({
           batch,
@@ -84,21 +109,24 @@ const generateExamReport = async (req, res) => {
           academicYear,
         });
 
-        // If any test was assigned after the saved result or available test count has increased:
-        // Regenerate the report again!
+        // If any exam is currently ongoing, or any completed test is unrecorded,
+        // or any test was assigned after the saved result, or available test count has increased:
+        // Regenerate the report every time!
         const baselineCount =
           storedReport.scheduleCount !== undefined && storedReport.scheduleCount !== null
             ? storedReport.scheduleCount
             : storedReport.testCount;
 
         if (
+          isExamOngoing ||
+          hasUnrecordedComplete ||
           hasNewTestAssigned ||
           (baselineCount !== undefined &&
             baselineCount !== null &&
             availableTestCount > baselineCount)
         ) {
           console.log(
-            `[CLASS REPORT] New test assigned/updated after saved result (stored count: ${baselineCount}, current count: ${availableTestCount}, hasNewTestAssigned: ${hasNewTestAssigned}). Generating report again...`
+            `[CLASS REPORT] Regenerating report: isExamOngoing=${isExamOngoing}, hasUnrecordedComplete=${hasUnrecordedComplete}, hasNewTestAssigned=${hasNewTestAssigned} (stored count: ${baselineCount}, current count: ${availableTestCount})`
           );
         } else {
           return res.status(200).json({

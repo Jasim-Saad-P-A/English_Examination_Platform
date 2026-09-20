@@ -76,7 +76,12 @@ export default function InstructionsPage() {
       // ==========================================
 
       if (response?.success) {
-        navigate("/exam/audiotest", {
+        const targetRoute =
+          response?.type === "comprehension"
+            ? "/exam/comprehensiontest"
+            : "/exam/audiotest";
+
+        navigate(targetRoute, {
           state: {
             ...response,
             admissionNo,
@@ -257,7 +262,9 @@ export default function InstructionsPage() {
             >
               {statusPopup.type === "success"
                 ? "Success"
-                : "Unable to Start Test"}
+                : statusPopup.message?.toLowerCase().includes("malpractice")
+                  ? "Malpractice"
+                  : "Unable to Start Test"}
             </h2>
 
             {/* Message */}
@@ -323,7 +330,7 @@ export default function InstructionsPage() {
               />
               <Instruction
                 number="03"
-                text="Listen carefully to each audio question before answering."
+                text="Read the passage or listen carefully to the audio before answering."
               />
               <Instruction
                 number="04"

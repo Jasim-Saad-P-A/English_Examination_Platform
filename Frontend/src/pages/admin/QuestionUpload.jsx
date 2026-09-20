@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Download,
   Trash2,
+  BookOpen,
 } from "lucide-react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -33,7 +34,9 @@ import ThemeDropdown from "../../components/common/ThemeDropDown";
 function QuestionUploadCard() {
   const [showInstructions, setShowInstructions] = useState(false);
   const [showMp3Popup, setShowMp3Popup] = useState(false);
+  const [examType, setExamType] = useState("audio"); // "audio" | "comprehension"
   const [questionCode, setQuestionCode] = useState("");
+  const [passage, setPassage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [audioFile, setAudioFile] = useState(null);
   const [questionFile, setQuestionFile] = useState(null);
@@ -43,8 +46,7 @@ function QuestionUploadCard() {
       id: 1,
       text: (
         <>
-          Enter a clear and meaningful <b>Question Code</b> for the English
-          test.
+          Select the <b>Examination Type</b>: Audio Listening or Paragraph Comprehension.
         </>
       ),
     },
@@ -52,7 +54,7 @@ function QuestionUploadCard() {
       id: 2,
       text: (
         <>
-          Upload the <b>audio file in MP3 format only</b>.
+          Enter a clear and meaningful <b>Question Code</b> for the English test.
         </>
       ),
     },
@@ -60,9 +62,11 @@ function QuestionUploadCard() {
       id: 3,
       text: (
         <>
-          Upload the questions file in the required <b>Excel (.xlsx) format</b>.
-          Please reference and use the <b>template.xlsx</b> file to ensure
-          correct formatting.
+          {examType === "audio" ? (
+            <>Upload the <b>audio file in MP3 format only</b>.</>
+          ) : (
+            <>Enter or paste the <b>Reading Comprehension Passage / Paragraph</b>.</>
+          )}
         </>
       ),
     },
@@ -70,8 +74,9 @@ function QuestionUploadCard() {
       id: 4,
       text: (
         <>
-          Make sure the audio is clear and the questions file follows the
-          correct format.
+          Upload the questions file in the required <b>Excel (.xlsx) format</b>.
+          Please reference and use the <b>template.xlsx</b> file to ensure
+          correct formatting.
         </>
       ),
     },
@@ -118,8 +123,13 @@ function QuestionUploadCard() {
       return;
     }
 
-    if (!audioFile) {
+    if (examType === "audio" && !audioFile) {
       toast.error("Please upload an MP3 audio file.");
+      return;
+    }
+
+    if (examType === "comprehension" && !passage.trim()) {
+      toast.error("Please enter the reading comprehension passage.");
       return;
     }
 
@@ -135,7 +145,9 @@ function QuestionUploadCard() {
     try {
       const data = await uploadQuestions({
         questionCode,
-        audioFile,
+        type: examType,
+        audioFile: examType === "audio" ? audioFile : null,
+        passage: examType === "comprehension" ? passage : null,
         questionFile,
       });
 
@@ -143,14 +155,19 @@ function QuestionUploadCard() {
         throw new Error(data.message || "Failed to upload question.");
       }
 
-      toast.success("Question uploaded successfully.");
+      toast.success(
+        `${examType === "comprehension" ? "Paragraph Comprehension" : "Audio"} Question uploaded successfully.`
+      );
 
       setQuestionCode("");
+      setPassage("");
       setAudioFile(null);
       setQuestionFile(null);
 
-      document.getElementById("audio-upload").value = "";
-      document.getElementById("excel-upload").value = "";
+      const audioInput = document.getElementById("audio-upload");
+      if (audioInput) audioInput.value = "";
+      const excelInput = document.getElementById("excel-upload");
+      if (excelInput) excelInput.value = "";
     } catch (error) {
       console.error("Upload Question Error:", error);
       toast.error(
@@ -200,6 +217,39 @@ function QuestionUploadCard() {
 
       {/* Content */}
       <div className="p-6 sm:p-8 space-y-6">
+        {/* Exam Type Selector */}
+        <div>
+          <label className="block text-sm font-bold text-[#800000] mb-2">
+            Examination Type
+          </label>
+          <div className="grid grid-cols-2 gap-3 p-1.5 bg-gray-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setExamType("audio")}
+              className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-semibold text-sm transition-all ${
+                examType === "audio"
+                  ? "bg-[#800000] text-white shadow-sm"
+                  : "text-gray-700 hover:text-black"
+              }`}
+            >
+              <Headphones size={18} />
+              Audio Listening
+            </button>
+            <button
+              type="button"
+              onClick={() => setExamType("comprehension")}
+              className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-semibold text-sm transition-all ${
+                examType === "comprehension"
+                  ? "bg-[#800000] text-white shadow-sm"
+                  : "text-gray-700 hover:text-black"
+              }`}
+            >
+              <BookOpen size={18} />
+              Paragraph Comprehension
+            </button>
+          </div>
+        </div>
+
         {/* Question Code */}
         <div>
           <label className="flex items-center gap-2 text-sm font-bold text-[#800000] mb-2">
@@ -208,37 +258,82 @@ function QuestionUploadCard() {
           </label>
           <input
             type="text"
-            placeholder="Enter question code"
+            placeholder="Enter question code (e.g. COMP-01 or AUD-01)"
             value={questionCode}
             onChange={(e) => setQuestionCode(e.target.value)}
             className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all placeholder:text-gray-400"
           />
         </div>
 
-        {/* Audio Upload Dropzone */}
-        <div>
-          <label className="flex items-center gap-2 text-sm font-bold text-[#800000] mb-2">
-            <Headphones size={16} />
-            Audio File
-          </label>
-          <input
-            type="file"
-            id="audio-upload"
-            className="hidden"
-            accept=".mp3"
-            onChange={handleAudioChange}
-          />
-          <label
-            htmlFor="audio-upload"
-            className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[#D4AF37] rounded-xl cursor-pointer bg-gray-50/50 hover:bg-[#FFF9E8] transition-colors"
-          >
-            <Upload size={24} className="text-[#D4AF37] mb-2" />
-            <p className="font-semibold text-gray-700 text-center px-4 line-clamp-1 break-all">
-              {audioFile ? audioFile.name : "Click to upload Audio"}
-            </p>
-            <span className="text-sm text-gray-500 mt-1">MP3 only</span>
-          </label>
-        </div>
+        {/* Audio Upload Dropzone (Audio only) */}
+        {examType === "audio" && (
+          <div>
+            <label className="flex items-center gap-2 text-sm font-bold text-[#800000] mb-2">
+              <Headphones size={16} />
+              Audio File
+            </label>
+            <input
+              type="file"
+              id="audio-upload"
+              className="hidden"
+              accept=".mp3"
+              onChange={handleAudioChange}
+            />
+            <label
+              htmlFor="audio-upload"
+              className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[#D4AF37] rounded-xl cursor-pointer bg-gray-50/50 hover:bg-[#FFF9E8] transition-colors"
+            >
+              <Upload size={24} className="text-[#D4AF37] mb-2" />
+              <p className="font-semibold text-gray-700 text-center px-4 line-clamp-1 break-all">
+                {audioFile ? audioFile.name : "Click to upload Audio"}
+              </p>
+              <span className="text-sm text-gray-500 mt-1">MP3 only</span>
+            </label>
+          </div>
+        )}
+
+        {/* Paragraph / Passage Input (Comprehension only) */}
+        {examType === "comprehension" && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="flex items-center gap-2 text-sm font-bold text-[#800000]">
+                <BookOpen size={16} />
+                Reading Passage / Paragraph
+              </label>
+              <span className="text-xs text-gray-500 font-medium">
+                {passage.trim()
+                  ? `${passage.trim().split(/\s+/).length} words`
+                  : "0 words"}
+              </span>
+            </div>
+            <textarea
+              rows={7}
+              placeholder="Paste or type the full reading comprehension passage/paragraphs here..."
+              value={passage}
+              onChange={(e) => setPassage(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all placeholder:text-gray-400 text-sm leading-relaxed"
+            />
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+              <span>Students will read this passage during the examination.</span>
+              <label className="cursor-pointer text-[#800000] hover:underline font-semibold">
+                Import from text file
+                <input
+                  type="file"
+                  accept=".txt,.md"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => setPassage(event.target.result);
+                      reader.readAsText(file);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        )}
 
         {/* Excel Upload Dropzone */}
         <div>

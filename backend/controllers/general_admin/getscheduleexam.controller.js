@@ -128,6 +128,7 @@ const getformdata = async (req, res) => {
           projection: {
             _id: 1,
             questionCode: 1,
+            type: 1,
             audioDurationMinutes: 1,
             duration: 1,
           },
@@ -144,6 +145,7 @@ const getformdata = async (req, res) => {
       return {
         questionSetId: question._id,
         questionCode: question.questionCode,
+        type: question.type || "audio",
         audioDurationMinutes: question.audioDurationMinutes || 0,
         duration: qDuration,
       };
@@ -242,6 +244,7 @@ const getScheduledExams = async (req, res) => {
             projection: {
               testcode: 1,
               questionCode: 1,
+              type: 1,
             },
           },
         );
@@ -249,6 +252,7 @@ const getScheduledExams = async (req, res) => {
         return {
           examId: exam._id,
           category: exam.category,
+          type: exam.type || questionSet?.type || "audio",
           questionSetId: exam.questionSetId,
           testcode: exam?.testcode !== undefined ? exam.testcode : null,
           department: exam.eligibility.department,

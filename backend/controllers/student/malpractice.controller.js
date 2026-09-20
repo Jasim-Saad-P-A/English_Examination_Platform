@@ -7,7 +7,11 @@ const reportMalpractice = async (req, res) => {
   try {
     const db = getDB();
 
-    const { testId, admissionNo, reason } = req.body;
+    const { testId, admissionNo, reason, timeRemaining } = req.body;
+    const timeRemainingVal =
+      timeRemaining != null && !isNaN(Number(timeRemaining))
+        ? Math.max(0, Math.floor(Number(timeRemaining)))
+        : null;
 
     // =====================================================
     // VALIDATION
@@ -117,9 +121,8 @@ const reportMalpractice = async (req, res) => {
             status: false,
             allowResume: false,
             result: "Malpractice",
-
+            ...(timeRemainingVal != null ? { timeRemaining: timeRemainingVal } : {}),
             submittedAt: detectedAt,
-
             updatedAt: detectedAt,
           },
         },
@@ -154,6 +157,18 @@ const reportMalpractice = async (req, res) => {
     // =====================================================
     // LIMIT NOT EXCEEDED
     // =====================================================
+
+    if (timeRemainingVal != null) {
+      await db.collection("exam").updateOne(
+        { _id: exam._id },
+        {
+          $set: {
+            timeRemaining: timeRemainingVal,
+            updatedAt: detectedAt,
+          },
+        },
+      );
+    }
 
     const remaining = MALPRACTICE_LIMIT - violationNo;
 

@@ -200,10 +200,11 @@ const scheduleExam = async (req, res) => {
       });
     }
 
+    const examType = questionSet.type || "audio";
     const minAudioDuration = Math.ceil(
       Number(questionSet.audioDurationMinutes || questionSet.duration || 0)
     );
-    if (minAudioDuration > 0 && durationNumber < minAudioDuration) {
+    if (examType === "audio" && minAudioDuration > 0 && durationNumber < minAudioDuration) {
       return res.status(400).json({
         success: false,
         message: `Duration must be at least ${minAudioDuration} minutes (question audio duration).`,
@@ -374,6 +375,7 @@ const scheduleExam = async (req, res) => {
 
         examsToInsert.push({
           category: normalizedCategory,
+          type: examType,
           cie: normalizedCIE,
           questionSetId: questionObjectId,
           inchargeStaff: assignedFaculty.name,
@@ -552,6 +554,7 @@ const scheduleExam = async (req, res) => {
 
     const exam = {
       category: normalizedCategory,
+      type: examType,
       cie: normalizedCIE,
       questionSetId: questionObjectId,
       inchargeStaff: assignedFaculty.name,

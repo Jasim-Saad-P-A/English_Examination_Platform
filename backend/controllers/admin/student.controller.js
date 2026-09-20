@@ -240,6 +240,9 @@ const getStudentByUsername = async (req, res) => {
             // CIE value
             cie: 1,
 
+            // Exam type
+            type: { $ifNull: ["$questionDetails.type", "audio"] },
+
             // Marks
             obtainedMarks: 1,
             totalMarks: 1,

@@ -10,6 +10,7 @@ import {
   Users,
   RotateCcw,
   AlertCircle,
+  ChevronDown,
 } from "lucide-react";
 import {
   deleteScheduledExam,
@@ -17,6 +18,7 @@ import {
   resumeStudentExam,
   getScheduleExams,
   getExistingStudents,
+  getQuestionFormData,
 } from "../../services/adminService";
 import ThemeDropdown from "../../components/common/ThemeDropDown";
 import ConfirmModal from "../../components/common/ConfirmModal";
@@ -37,6 +39,9 @@ export default function AdminDashboard() {
   const [studentLoading, setStudentLoading] = useState(false);
   const [showResumeModal, setShowResumeModal] = useState(false);
   const [resumeUsername, setResumeUsername] = useState("");
+  const [resumeQuestionCode, setResumeQuestionCode] = useState("");
+  const [questionCodeList, setQuestionCodeList] = useState([]);
+  const [loadingQuestionCodes, setLoadingQuestionCodes] = useState(false);
   const [resuming, setResuming] = useState(false);
   const [resumePopup, setResumePopup] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
@@ -138,14 +143,49 @@ export default function AdminDashboard() {
     // Initial fetch
     fetchTests();
 
-    // Refresh every 10 seconds
-    interval = setInterval(fetchTests, 10000);
+    // Fetch all available question codes for the resume modal dropdown
+    let isCodeMounted = true;
+    const fetchQuestionCodes = async () => {
+      setLoadingQuestionCodes(true);
+      try {
+        const formData = await getQuestionFormData();
+        if (
+          isCodeMounted &&
+          formData?.data?.tests &&
+          Array.isArray(formData.data.tests)
+        ) {
+          const codes = formData.data.tests
+            .map((t) => t.questionCode)
+            .filter(Boolean);
+          setQuestionCodeList(codes);
+        }
+      } catch (err) {
+        console.error("Error fetching question codes:", err);
+      } finally {
+        if (isCodeMounted) {
+          setLoadingQuestionCodes(false);
+        }
+      }
+    };
+    fetchQuestionCodes();
+
+    // Auto-refresh scheduled exams list
+    interval = setInterval(fetchTests, 30000);
 
     return () => {
       isMounted = false;
+      isCodeMounted = false;
       clearInterval(interval);
     };
   }, []);
+
+  const allQuestionCodes = useMemo(() => {
+    const fromTests = tests.map((t) => t.questionCode).filter(Boolean);
+    const combined = Array.from(
+      new Set([...questionCodeList, ...fromTests]),
+    );
+    return combined.sort((a, b) => a.localeCompare(b));
+  }, [questionCodeList, tests]);
 
   // ==========================================================
   // SUMMARY
@@ -321,6 +361,15 @@ export default function AdminDashboard() {
       e.preventDefault();
     }
 
+    if (!resumeQuestionCode || !resumeQuestionCode.trim()) {
+      setResumePopup({
+        type: "error",
+        title: "Question Code Required",
+        message: "Please enter the Question Code for the assessment to resume.",
+      });
+      return;
+    }
+
     if (!resumeUsername || !resumeUsername.trim()) {
       setResumePopup({
         type: "error",
@@ -332,12 +381,16 @@ export default function AdminDashboard() {
 
     setResuming(true);
     try {
-      const result = await resumeStudentExam(resumeUsername.trim());
+      const result = await resumeStudentExam({
+        questionCode: resumeQuestionCode.trim().toUpperCase(),
+        username: resumeUsername.trim(),
+      });
       if (!result.success) {
         throw new Error(result.message || "Failed to resume student exam.");
       }
 
       setResumeUsername("");
+      setResumeQuestionCode("");
       setShowResumeModal(false);
       setResumePopup({
         type: "success",
@@ -436,6 +489,7 @@ export default function AdminDashboard() {
               type="button"
               onClick={() => {
                 setResumeUsername("");
+                setResumeQuestionCode("");
                 setShowResumeModal(true);
               }}
               className="px-5 py-3 rounded-lg bg-[#7a1f2b] hover:bg-[#5e1620] text-white font-semibold transition shadow-sm flex items-center gap-2 cursor-pointer border border-[#7a1f2b]"
@@ -1365,8 +1419,37 @@ export default function AdminDashboard() {
                 {/* MODAL BODY */}
                 <form onSubmit={handleResumeStudent} className="p-6">
                   <p className="text-sm text-gray-600 mb-4">
-                    Enter the student's <strong>username</strong> (admission or register number) whose exam was interrupted and needs to be resumed.
+                    Enter the <strong>Question Code</strong> and student's <strong>username</strong> (admission or register number) whose exam was interrupted and needs to be resumed.
                   </p>
+
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                      Question Code
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={resumeQuestionCode}
+                        onChange={(e) => setResumeQuestionCode(e.target.value)}
+                        autoFocus
+                        disabled={resuming}
+                        className="w-full h-11 px-3.5 pr-10 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FDCC03]/60 focus:border-[#7a1f2b] text-sm font-semibold bg-white cursor-pointer appearance-none text-gray-800"
+                      >
+                        <option value="">
+                          {loadingQuestionCodes
+                            ? "-- Loading Question Codes... --"
+                            : "-- Select Question Code --"}
+                        </option>
+                        {allQuestionCodes.map((code) => (
+                          <option key={code} value={code}>
+                            {code}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400">
+                        <ChevronDown size={18} />
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="mb-5">
                     <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
@@ -1377,7 +1460,6 @@ export default function AdminDashboard() {
                       value={resumeUsername}
                       onChange={(e) => setResumeUsername(e.target.value)}
                       placeholder="e.g. 21EC001 or 112821104001"
-                      autoFocus
                       disabled={resuming}
                       className="w-full h-11 px-3.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FDCC03]/60 focus:border-[#7a1f2b] text-sm font-medium"
                     />
@@ -1394,7 +1476,7 @@ export default function AdminDashboard() {
                     </button>
                     <button
                       type="submit"
-                      disabled={resuming || !resumeUsername.trim()}
+                      disabled={resuming || !resumeUsername.trim() || !resumeQuestionCode.trim()}
                       className="px-5 py-2.5 rounded-lg bg-[#7a1f2b] hover:bg-[#5e1620] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition shadow-sm flex items-center gap-2 cursor-pointer"
                     >
                       {resuming ? (

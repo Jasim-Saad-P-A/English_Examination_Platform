@@ -350,6 +350,8 @@ const generateAndSaveClassReport = async ({
         admissionNo: 1,
         category: 1,
         obtainedMarks: 1,
+        result: 1,
+        malpractice: 1,
       })
       .toArray();
 
@@ -371,10 +373,29 @@ const generateAndSaveClassReport = async ({
         .trim()
         .toLowerCase();
 
+      const isRecordMalpractice =
+        record.result === "Malpractice" || record.malpractice?.status === true;
+
       if (recordCategory === "retest") {
-        entry.retest = Math.max(entry.retest ?? 0, Number(record.obtainedMarks) || 0);
+        if (isRecordMalpractice) {
+          entry.retest = "Malpractice";
+          entry.retestMalpractice = true;
+        } else {
+          entry.retest = Math.max(
+            entry.retest === "Malpractice" ? 0 : entry.retest ?? 0,
+            Number(record.obtainedMarks) || 0
+          );
+        }
       } else {
-        entry.normal = Math.max(entry.normal ?? 0, Number(record.obtainedMarks) || 0);
+        if (isRecordMalpractice) {
+          entry.normal = "Malpractice";
+          entry.normalMalpractice = true;
+        } else {
+          entry.normal = Math.max(
+            entry.normal === "Malpractice" ? 0 : entry.normal ?? 0,
+            Number(record.obtainedMarks) || 0
+          );
+        }
       }
     });
 
@@ -403,20 +424,37 @@ const generateAndSaveClassReport = async ({
             if (entry) {
               if (isUniversityReport) {
                 if (entry.normal !== undefined) {
-                  markDisplay = entry.normal;
+                  if (entry.normalMalpractice || entry.normal === "Malpractice") {
+                    markDisplay = "Malpractice";
+                  } else {
+                    markDisplay = entry.normal;
+                  }
                   hasAttempt = true;
                 }
               } else {
                 // Normal report: if student took retest, include retest marks; otherwise normal marks
                 if (entry.retest !== undefined) {
-                  markDisplay = entry.retest;
+                  if (entry.retestMalpractice || entry.retest === "Malpractice") {
+                    markDisplay = "Malpractice";
+                  } else {
+                    markDisplay = entry.retest;
+                  }
                   hasAttempt = true;
                 } else if (entry.normal !== undefined) {
-                  markDisplay = entry.normal;
+                  if (entry.normalMalpractice || entry.normal === "Malpractice") {
+                    markDisplay = "Malpractice";
+                  } else {
+                    markDisplay = entry.normal;
+                  }
                   hasAttempt = true;
                 }
               }
             }
+
+            if (markDisplay === "Malpractice") {
+              return `<td class="malpractice-cell"><span class="malpractice-badge">M</span></td>`;
+            }
+
             if (markDisplay !== "AB") {
               total += Number(markDisplay) || 0;
             }
@@ -598,6 +636,7 @@ const generateAndSaveClassReport = async ({
       staff: staffValue,
       testCount: uniqueTestColumns.length,
       scheduleCount: scheduleTests.length,
+      scheduleIds: scheduleTests.map((t) => String(t._id)),
       lastUpdatedTestId: triggeredTestId ? String(triggeredTestId) : null,
       updatedAt: now,
     };
@@ -1001,12 +1040,356 @@ const checkNewTestAssignedAfterReport = async ({
   return false;
 };
 
+/**
+ * Check if any scheduled exam or active student attempt is currently ongoing (not completed) for this class
+ */
+const isAnyExamOngoingForClass = async ({
+  batch,
+  department,
+  section,
+  semester,
+  category = "normal",
+  cie = null,
+  academicYear = null,
+}) => {
+  const db = getDB();
+
+  const cleanBatch = batch && typeof batch === "string" ? batch.trim() : null;
+  const cleanDept =
+    department && typeof department === "string" ? department.trim() : null;
+  const cleanSec =
+    section && typeof section === "string" ? section.trim() : null;
+  const cleanSem =
+    semester && typeof semester === "string"
+      ? semester.trim().toLowerCase()
+      : null;
+  const cleanCategory =
+    category && typeof category === "string"
+      ? category.trim().toLowerCase()
+      : "normal";
+
+  const isUniv = cleanCategory === "university";
+  const isCie =
+    !isUniv &&
+    cie &&
+    typeof cie === "string" &&
+    !["n/a", "all", "none"].includes(cie.trim().toLowerCase());
+  const cieVal = isCie ? cie.trim().toUpperCase() : null;
+
+  // 1. Any scheduled test that is NOT Completed and NOT Cancelled is ongoing/not complete
+  const scheduleFilter = {
+    status: {
+      $nin: [
+        "Cancelled",
+        "cancelled",
+        "CANCELLED",
+        "Completed",
+        "completed",
+        "COMPLETED",
+      ],
+    },
+  };
+
+  if (cleanBatch) {
+    scheduleFilter["eligibility.batch"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanBatch)}$`, "i"),
+    };
+  }
+  if (cleanDept) {
+    scheduleFilter["eligibility.department"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanDept)}$`, "i"),
+    };
+  }
+  if (cleanSec) {
+    scheduleFilter["eligibility.section"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanSec)}$`, "i"),
+    };
+  }
+  if (cleanSem) {
+    scheduleFilter["eligibility.semester"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanSem)}$`, "i"),
+    };
+  }
+  if (academicYear && academicYear !== "All" && academicYear !== "null") {
+    scheduleFilter["eligibility.academicYear"] = academicYear;
+  }
+
+  if (isUniv) {
+    scheduleFilter.category = { $regex: /^university$/i };
+  } else if (isCie) {
+    const cieRegex = new RegExp(`^(CIE[\\s-]*)?${escapeRegex(cieVal)}$`, "i");
+
+    const normalCieTests = await db
+      .collection("schedule")
+      .find({
+        status: { $nin: ["Cancelled", "cancelled"] },
+        ...(cleanBatch
+          ? {
+              "eligibility.batch": {
+                $regex: new RegExp(`^${escapeRegex(cleanBatch)}$`, "i"),
+              },
+            }
+          : {}),
+        cie: cieRegex,
+      })
+      .project({ questionSetId: 1 })
+      .toArray();
+
+    const relatedQSetIds = normalCieTests
+      .map((t) => t.questionSetId)
+      .filter(Boolean);
+
+    scheduleFilter.$or = [
+      {
+        cie: cieRegex,
+        category: { $in: ["normal", "retest", "Normal", "Retest"] },
+      },
+      ...(relatedQSetIds.length > 0
+        ? [
+            {
+              category: { $in: ["retest", "Retest"] },
+              questionSetId: { $in: relatedQSetIds },
+            },
+          ]
+        : []),
+    ];
+  } else if (cleanCategory) {
+    scheduleFilter.category = {
+      $regex: new RegExp(`^${escapeRegex(cleanCategory)}$`, "i"),
+    };
+  }
+
+  const ongoingSchedule = await db
+    .collection("schedule")
+    .findOne(scheduleFilter);
+
+  if (ongoingSchedule) {
+    return true;
+  }
+
+  // 2. Check exam collection for any active attempt (status: true) for this class
+  const activeExamFilter = {
+    status: true,
+  };
+
+  if (cleanBatch) {
+    activeExamFilter.batch = {
+      $regex: new RegExp(`^${escapeRegex(cleanBatch)}$`, "i"),
+    };
+  }
+  if (cleanDept) {
+    activeExamFilter.department = {
+      $regex: new RegExp(`^${escapeRegex(cleanDept)}$`, "i"),
+    };
+  }
+  if (cleanSec) {
+    activeExamFilter.section = {
+      $regex: new RegExp(`^${escapeRegex(cleanSec)}$`, "i"),
+    };
+  }
+  if (isUniv) {
+    activeExamFilter.category = { $regex: /^university$/i };
+  } else if (isCie) {
+    const cieRegex = new RegExp(`^(CIE[\\s-]*)?${escapeRegex(cieVal)}$`, "i");
+    activeExamFilter.cie = cieRegex;
+  }
+
+  const ongoingAttempt = await db.collection("exam").findOne(activeExamFilter);
+  if (ongoingAttempt) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Check if there is any completed test for this class that is not recorded in the stored report,
+ * or if any completed test or student submission was updated after the report was generated.
+ */
+const hasUnrecordedCompleteTest = async ({
+  batch,
+  department,
+  section,
+  semester,
+  category = "normal",
+  cie = null,
+  academicYear = null,
+  storedReport = null,
+}) => {
+  if (!storedReport) return false;
+  const reportUpdatedAt = storedReport.updatedAt || storedReport.createdAt;
+  if (!reportUpdatedAt) return true;
+
+  const db = getDB();
+  const cleanBatch = batch && typeof batch === "string" ? batch.trim() : null;
+  const cleanDept =
+    department && typeof department === "string" ? department.trim() : null;
+  const cleanSec =
+    section && typeof section === "string" ? section.trim() : null;
+  const cleanSem =
+    semester && typeof semester === "string"
+      ? semester.trim().toLowerCase()
+      : null;
+  const cleanCategory =
+    category && typeof category === "string"
+      ? category.trim().toLowerCase()
+      : "normal";
+
+  const isUniv = cleanCategory === "university";
+  const isCie =
+    !isUniv &&
+    cie &&
+    typeof cie === "string" &&
+    !["n/a", "all", "none"].includes(cie.trim().toLowerCase());
+  const cieVal = isCie ? cie.trim().toUpperCase() : null;
+
+  const completedFilter = {
+    status: { $in: ["Completed", "completed", "COMPLETED"] },
+  };
+
+  if (cleanBatch) {
+    completedFilter["eligibility.batch"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanBatch)}$`, "i"),
+    };
+  }
+  if (cleanDept) {
+    completedFilter["eligibility.department"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanDept)}$`, "i"),
+    };
+  }
+  if (cleanSec) {
+    completedFilter["eligibility.section"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanSec)}$`, "i"),
+    };
+  }
+  if (cleanSem) {
+    completedFilter["eligibility.semester"] = {
+      $regex: new RegExp(`^${escapeRegex(cleanSem)}$`, "i"),
+    };
+  }
+  if (academicYear && academicYear !== "All" && academicYear !== "null") {
+    completedFilter["eligibility.academicYear"] = academicYear;
+  }
+
+  if (isUniv) {
+    completedFilter.category = { $regex: /^university$/i };
+  } else if (isCie) {
+    const cieRegex = new RegExp(`^(CIE[\\s-]*)?${escapeRegex(cieVal)}$`, "i");
+    const normalCieTests = await db
+      .collection("schedule")
+      .find({
+        status: { $nin: ["Cancelled", "cancelled"] },
+        ...(cleanBatch
+          ? {
+              "eligibility.batch": {
+                $regex: new RegExp(`^${escapeRegex(cleanBatch)}$`, "i"),
+              },
+            }
+          : {}),
+        cie: cieRegex,
+      })
+      .project({ questionSetId: 1 })
+      .toArray();
+
+    const relatedQSetIds = normalCieTests
+      .map((t) => t.questionSetId)
+      .filter(Boolean);
+
+    completedFilter.$or = [
+      {
+        cie: cieRegex,
+        category: { $in: ["normal", "retest", "Normal", "Retest"] },
+      },
+      ...(relatedQSetIds.length > 0
+        ? [
+            {
+              category: { $in: ["retest", "Retest"] },
+              questionSetId: { $in: relatedQSetIds },
+            },
+          ]
+        : []),
+    ];
+  } else if (cleanCategory) {
+    completedFilter.category = {
+      $regex: new RegExp(`^${escapeRegex(cleanCategory)}$`, "i"),
+    };
+  }
+
+  // 1. Fetch all completed schedules for this class
+  const completedSchedules = await db
+    .collection("schedule")
+    .find(completedFilter)
+    .toArray();
+
+  if (completedSchedules.length === 0) {
+    return false;
+  }
+
+  // 2. Check if any completed schedule ID is missing from storedReport.scheduleIds
+  if (storedReport.scheduleIds && Array.isArray(storedReport.scheduleIds)) {
+    const recordedIds = new Set(
+      storedReport.scheduleIds.map((id) => String(id))
+    );
+    const hasUnrecordedId = completedSchedules.some(
+      (s) => !recordedIds.has(String(s._id))
+    );
+    if (hasUnrecordedId) {
+      return true;
+    }
+  } else {
+    // Legacy report without scheduleIds array: check count
+    const baseline =
+      storedReport.scheduleCount !== undefined && storedReport.scheduleCount !== null
+        ? storedReport.scheduleCount
+        : storedReport.testCount || 0;
+    if (completedSchedules.length > baseline) {
+      return true;
+    }
+  }
+
+  // 3. Check if any completed schedule was completed or updated after the report was saved
+  const reportDate = new Date(reportUpdatedAt);
+  const hasScheduleUpdatedAfter = completedSchedules.some((s) => {
+    const d = s.updatedAt || s.createdAt || s.endTime;
+    return d && new Date(d) > reportDate;
+  });
+  if (hasScheduleUpdatedAfter) {
+    return true;
+  }
+
+  // 4. Check if any student exam attempt was submitted or updated after the report was saved
+  const examFilter = {
+    $or: [
+      { submittedAt: { $gt: reportDate } },
+      { updatedAt: { $gt: reportDate } },
+    ],
+  };
+  if (cleanBatch) {
+    examFilter.batch = { $regex: new RegExp(`^${escapeRegex(cleanBatch)}$`, "i") };
+  }
+  if (cleanDept) {
+    examFilter.department = { $regex: new RegExp(`^${escapeRegex(cleanDept)}$`, "i") };
+  }
+  if (cleanSec) {
+    examFilter.section = { $regex: new RegExp(`^${escapeRegex(cleanSec)}$`, "i") };
+  }
+  const recentSubmission = await db.collection("exam").findOne(examFilter);
+  if (recentSubmission) {
+    return true;
+  }
+
+  return false;
+};
+
 module.exports = {
   generateAndSaveClassReport,
   generateAndSaveClassReportForSchedule,
   getStoredClassReport,
   countAvailableTestsForClass,
   checkNewTestAssignedAfterReport,
+  isAnyExamOngoingForClass,
+  hasUnrecordedCompleteTest,
 };
+
 
 

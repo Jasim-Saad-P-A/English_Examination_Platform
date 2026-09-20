@@ -4,7 +4,7 @@ const { getDB } = require("../../config/db");
 const questionsupload = async (req, res) => {
   try {
     const { questionCode } = req.body;
-    const { audio, audioDurationMinutes } = req.uploadedData;
+    const { type, audio, audioDurationMinutes, passage } = req.uploadedData;
 
     // Validate questionCode
     if (!questionCode || !questionCode.trim()) {
@@ -21,9 +21,13 @@ const questionsupload = async (req, res) => {
     const document = {
       questionCode: questionCode.trim(),
 
-      audioDurationMinutes: audioDurationMinutes,
+      type: type || "audio",
 
-      audioUrl: audio.url,
+      passage: passage || null,
+
+      audioDurationMinutes: audioDurationMinutes || 0,
+
+      audioUrl: audio?.url || null,
 
       questions: parsedQuestions,
 
