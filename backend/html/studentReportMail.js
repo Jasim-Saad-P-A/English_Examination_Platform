@@ -264,7 +264,7 @@ const getEmailTemplate = (studentName, examTitle, questionCode, isMalpractice = 
 
         <img
           class="header-logo"
-          src="https://vec-examination-platform.s3.ap-south-1.amazonaws.com/assets/logo.png"
+          src="https://www.testeng.site/assets/college-logo-D-j6Zg0N.png"
           alt="Velammal Logo"
         />
 
