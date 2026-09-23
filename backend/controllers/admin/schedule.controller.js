@@ -64,21 +64,29 @@ const scheduleExam = async (req, res) => {
     // =====================================================
     // COMMON REQUIRED FIELD VALIDATION
     // =====================================================
-    if (!questionSetId || !batch || !academicYear || !semester || !duration) {
+    if (
+      !questionSetId ||
+      !batch ||
+      !academicYear ||
+      !semester ||
+      !duration ||
+      !department ||
+      !section
+    ) {
       return res.status(400).json({
         success: false,
         message:
-          "questionSetId, batch, academicYear, semester and duration are required.",
+          "questionSetId, batch, academicYear, semester, duration, department and section are required.",
       });
     }
 
-    // For non-normal categories, department, section, startTime and endTime are required
+    // For non-normal categories, startTime and endTime are required
     if (normalizedCategory !== "normal") {
-      if (!department || !section || !startTime || !endTime) {
+      if (!startTime || !endTime) {
         return res.status(400).json({
           success: false,
           message:
-            "department, section, startTime and endTime are required for this category.",
+            "startTime and endTime are required for this category.",
         });
       }
     }
@@ -224,212 +232,28 @@ const scheduleExam = async (req, res) => {
     }
 
     // =====================================================
-    // CASE 1: NORMAL CATEGORY (SCHEDULE FOR ALL DEPT & SEC)
+    // TIMING VALIDATION (FOR RETEST & UNIVERSITY)
     // =====================================================
-    if (normalizedCategory === "normal" && (!department || !section)) {
-      const examDate = date ? String(date).trim() : null;
+    let start = null;
+    let end = null;
 
-      // Query students collection for all distinct departments and sections in this batch
-      const studentClasses = await db
-        .collection("students")
-        .aggregate([
-          {
-            $match: {
-              batch: String(batch).trim(),
-              department: { $exists: true, $ne: "" },
-              section: { $exists: true, $ne: "" },
-            },
-          },
-          {
-            $group: {
-              _id: {
-                department: "$department",
-                section: "$section",
-              },
-              admissionNumbers: {
-                $addToSet: "$admissionNo",
-              },
-              usernames: {
-                $addToSet: "$username",
-              },
-            },
-          },
-          {
-            $sort: {
-              "_id.department": 1,
-              "_id.section": 1,
-            },
-          },
-        ])
-        .toArray();
+    if (normalizedCategory !== "normal") {
+      start = new Date(`${startTime}+05:30`);
+      end = new Date(`${endTime}+05:30`);
 
-      let targetClasses = studentClasses.map((sc) => {
-        const allAdmissions = [
-          ...(sc.admissionNumbers || []),
-          ...(sc.usernames || []),
-        ].filter(Boolean);
-
-        return {
-          department: String(sc._id.department).trim(),
-          section: String(sc._id.section).trim().toUpperCase(),
-          admissionNo: [...new Set(allAdmissions)],
-        };
-      });
-
-      // Fallback: check staff allowdept if no students found
-      if (targetClasses.length === 0) {
-        const staffList = await db
-          .collection("staff")
-          .find({
-            role: "staff",
-            "allowdept.batch": String(batch).trim(),
-          })
-          .toArray();
-
-        const classMap = new Map();
-        staffList.forEach((st) => {
-          (st.allowdept || []).forEach((bg) => {
-            if (String(bg.batch).trim() === String(batch).trim()) {
-              (bg.classes || []).forEach((c) => {
-                const key = `${c.dept}__${c.sec}`.toUpperCase();
-                if (!classMap.has(key)) {
-                  classMap.set(key, {
-                    department: String(c.dept).trim(),
-                    section: String(c.sec).trim().toUpperCase(),
-                    admissionNo: [],
-                  });
-                }
-              });
-            }
-          });
-        });
-        targetClasses = Array.from(classMap.values());
-      }
-
-      if (targetClasses.length === 0) {
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
         return res.status(400).json({
           success: false,
-          message: `No departments or sections found for batch ${batch}.`,
+          message: "Invalid startTime or endTime.",
         });
       }
 
-      // Check duplicates for each target class: only for same questionSetId, category, semester, class, and academicYear
-      const conflictingClasses = [];
-      for (const cls of targetClasses) {
-        const duplicateQuery = {
-          category: normalizedCategory,
-          questionSetId: questionObjectId,
-          "eligibility.department": cls.department,
-          "eligibility.batch": String(batch).trim(),
-          "eligibility.academicYear": normalizedAcademicYear,
-          "eligibility.semester": normalizedSemester,
-          "eligibility.section": cls.section,
-          status: { $ne: "Cancelled" },
-        };
-
-        const existingExam = await db
-          .collection("schedule")
-          .findOne(duplicateQuery);
-
-        if (existingExam) {
-          conflictingClasses.push(`${cls.department} - Section ${cls.section}`);
-        }
-      }
-
-      if (conflictingClasses.length > 0) {
-        return res.status(409).json({
+      if (end <= start) {
+        return res.status(400).json({
           success: false,
-          message: `This test is already assigned/scheduled for: ${conflictingClasses.join(
-            ", "
-          )} for category (${normalizedCategory}), semester (${normalizedSemester}), and academic year (${normalizedAcademicYear}).`,
+          message: "End time must be greater than start time.",
         });
       }
-
-      const examsToInsert = [];
-      const now = new Date();
-
-      for (const cls of targetClasses) {
-        const assignedFaculty = await db.collection("staff").findOne({
-          role: "staff",
-          allowdept: {
-            $elemMatch: {
-              batch: String(batch).trim(),
-              classes: {
-                $elemMatch: {
-                  dept: cls.department,
-                  sec: cls.section,
-                },
-              },
-            },
-          },
-        });
-
-        if (!assignedFaculty) {
-          return res.status(400).json({
-            success: false,
-            message: `Cannot schedule exam: No staff member is assigned to ${cls.department} - Section ${cls.section}.`,
-          });
-        }
-
-        const testcode = await generateUniqueTestCode(db);
-
-        examsToInsert.push({
-          category: normalizedCategory,
-          type: examType,
-          cie: normalizedCIE,
-          questionSetId: questionObjectId,
-          inchargeStaff: assignedFaculty.name,
-          eligibility: {
-            department: cls.department,
-            batch: String(batch).trim(),
-            academicYear: normalizedAcademicYear,
-            semester: normalizedSemester,
-            section: cls.section,
-            admissionNo: cls.admissionNo,
-          },
-          duration: durationNumber,
-          date: examDate,
-          startTime: null,
-          endTime: null,
-          status: "Scheduled",
-          testcode,
-          testcodeGeneratedAt: now,
-          createdBy: req.user?.username || null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      const insertResult = await db
-        .collection("schedule")
-        .insertMany(examsToInsert);
-
-      return res.status(201).json({
-        success: true,
-        message: `Exam scheduled successfully for ${examsToInsert.length} section(s).`,
-        count: examsToInsert.length,
-        insertedCount: insertResult.insertedCount,
-      });
-    }
-
-    // =====================================================
-    // CASE 2: NON-NORMAL CATEGORY (OR SPECIFIC DEPT & SEC)
-    // =====================================================
-    const start = new Date(`${startTime}+05:30`);
-    const end = new Date(`${endTime}+05:30`);
-
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid startTime or endTime.",
-      });
-    }
-
-    if (end <= start) {
-      return res.status(400).json({
-        success: false,
-        message: "End time must be greater than start time.",
-      });
     }
 
     const normalizedSection = String(section).trim().toUpperCase();
@@ -552,6 +376,21 @@ const scheduleExam = async (req, res) => {
       }
     }
 
+    const examDate = date
+      ? String(date).trim()
+      : startTime
+        ? String(startTime).split("T")[0]
+        : null;
+
+    let testcode = null;
+    let testcodeGeneratedAt = null;
+    const now = new Date();
+
+    if (normalizedCategory === "normal") {
+      testcode = await generateUniqueTestCode(db);
+      testcodeGeneratedAt = now;
+    }
+
     const exam = {
       category: normalizedCategory,
       type: examType,
@@ -567,14 +406,15 @@ const scheduleExam = async (req, res) => {
         admissionNo: finalAdmissionNos,
       },
       duration: durationNumber,
+      date: examDate,
       startTime: start,
       endTime: end,
       status: "Scheduled",
-      testcode: null,
-      testcodeGeneratedAt: null,
+      testcode,
+      testcodeGeneratedAt,
       createdBy: req.user?.username || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: now,
+      updatedAt: now,
     };
 
     const result = await db.collection("schedule").insertOne(exam);

@@ -986,10 +986,10 @@ export default function Schedule() {
       problems.push("Duration must be a positive whole number of minutes");
     }
 
-    if (category !== "Normal") {
-      if (selectedCombos.length === 0)
-        problems.push("Select at least one Branch & Section");
+    if (selectedCombos.length === 0)
+      problems.push("Select at least one Branch & Section");
 
+    if (category !== "Normal") {
       const hasStartTime = startHour && startMinute && startPeriod;
       const hasEndTime = endHour && endMinute && endPeriod;
       if (!hasStartTime) problems.push("Start Time is required");
@@ -1085,48 +1085,14 @@ export default function Schedule() {
     setErrorMessage("");
     setStatusMessage("");
 
-    // Category Normal: automatically schedule test for all dept and sec in backend
-    if (category === "Normal") {
-      try {
-        const payload = {
-          category: "normal",
-          cie,
-          questionSetId,
-          batch,
-          academicYear,
-          semester: semester.toLowerCase(),
-          date,
-          duration: durationMinutes,
-        };
-
-        const body = await scheduleExam(payload);
-        if (body?.success === false) {
-          throw new Error(body?.message || body?.error || "Request failed");
-        }
-
-        toast.success(
-          body?.message || "Exam scheduled successfully for all sections.",
-        );
-        resetFormFields();
-      } catch (err) {
-        const backendMessage =
-          err?.response?.data?.message ||
-          err?.message ||
-          "Unable to create the schedule. Please try again.";
-        setErrorMessage(backendMessage);
-      } finally {
-        setIsSubmitting(false);
-      }
-      return;
-    }
-
-    const startTime = buildIsoDateTime(
-      date,
-      startHour,
-      startMinute,
-      startPeriod,
-    );
-    const endTime = buildIsoDateTime(date, endHour, endMinute, endPeriod);
+    const startTime =
+      category === "Normal"
+        ? null
+        : buildIsoDateTime(date, startHour, startMinute, startPeriod);
+    const endTime =
+      category === "Normal"
+        ? null
+        : buildIsoDateTime(date, endHour, endMinute, endPeriod);
 
     const combosToSubmit = selectedCombos
       .map((key) => DEPT_SECTION_OPTIONS.find((o) => o.key === key))
@@ -1165,10 +1131,13 @@ export default function Schedule() {
           semester: semester.toLowerCase(),
           section: combo.section,
           admissionNo:
-            admissionsForCombo.length > 0
-              ? admissionsForCombo
-              : selectedAdmissionNos,
+            category === "Normal"
+              ? []
+              : admissionsForCombo.length > 0
+                ? admissionsForCombo
+                : selectedAdmissionNos,
           duration: durationMinutes,
+          date,
           startTime,
           endTime,
         };
@@ -1198,7 +1167,7 @@ export default function Schedule() {
           ? "Retest assigned"
           : category === "University"
             ? "University exam scheduled"
-            : "Schedule created";
+            : "Exam scheduled";
       toast.success(
         `${verb} for ${successCount} section${successCount > 1 ? "s" : ""}.`,
       );
@@ -1350,121 +1319,112 @@ export default function Schedule() {
                 </div>
               )}
 
-              {/* Info notice for Normal */}
-              {category === "Normal" && (
-                <div className="rounded-xl border border-[#FDCC03]/50 bg-[#FDCC03]/10 p-3.5 text-xs font-medium text-black/80">
-                  Normal exams will be automatically scheduled for all departments and sections in this batch with section-independent timing.
-                </div>
-              )}
-
-              {/* Branch & Section (hidden for Normal) */}
-              {category !== "Normal" && (
-                <div ref={pickerRef} className="relative">
-                  <label className={labelClasses}>Branch &amp; Section</label>
-                  <button
-                    type="button"
-                    disabled={isLoadingScheduleData}
-                    onClick={() => setIsPickerOpen((prev) => !prev)}
-                    className={dropdownTriggerClasses(
-                      isPickerOpen,
-                      isLoadingScheduleData,
-                    )}
+              {/* Branch & Section */}
+              <div ref={pickerRef} className="relative">
+                <label className={labelClasses}>Branch &amp; Section</label>
+                <button
+                  type="button"
+                  disabled={isLoadingScheduleData}
+                  onClick={() => setIsPickerOpen((prev) => !prev)}
+                  className={dropdownTriggerClasses(
+                    isPickerOpen,
+                    isLoadingScheduleData,
+                  )}
+                >
+                  <Building2
+                    size={18}
+                    strokeWidth={2}
+                    className={dropdownIconClasses(isPickerOpen)}
+                  />
+                  <span
+                    className={`flex-1 truncate text-[15px] font-medium ${
+                      selectedCombos.length ? "text-black" : "text-black/45"
+                    }`}
                   >
-                    <Building2
-                      size={18}
-                      strokeWidth={2}
-                      className={dropdownIconClasses(isPickerOpen)}
-                    />
-                    <span
-                      className={`flex-1 truncate text-[15px] font-medium ${
-                        selectedCombos.length ? "text-black" : "text-black/45"
-                      }`}
-                    >
-                      {selectedCombos.length
-                        ? `${selectedCombos.length} Selected`
-                        : "Select branch & section"}
-                    </span>
-                    <span className={dropdownArrowClasses(isPickerOpen)}>
-                      {isPickerOpen ? (
-                        <ChevronUp size={18} strokeWidth={2} />
-                      ) : (
-                        <ChevronDown size={18} strokeWidth={2} />
-                      )}
-                    </span>
-                  </button>
+                    {selectedCombos.length
+                      ? `${selectedCombos.length} Selected`
+                      : "Select branch & section"}
+                  </span>
+                  <span className={dropdownArrowClasses(isPickerOpen)}>
+                    {isPickerOpen ? (
+                      <ChevronUp size={18} strokeWidth={2} />
+                    ) : (
+                      <ChevronDown size={18} strokeWidth={2} />
+                    )}
+                  </span>
+                </button>
 
-                  {isPickerOpen && (
-                    <div className={dropdownPanelClasses}>
-                      <label className={dropdownAllRowClasses}>
-                        <input
-                          type="checkbox"
-                          checked={isAllCombosSelected}
-                          onChange={handleToggleAllCombos}
-                          className="h-4 w-4 rounded border-gray-300 accent-[#800000]"
-                        />
-                        All
-                      </label>
-                      <div className="max-h-60 overflow-y-auto">
-                        {DEPT_SECTION_OPTIONS.map((option) => (
-                          <label
-                            key={option.key}
-                            className={dropdownOptionRowClasses(
-                              selectedCombos.includes(option.key),
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedCombos.includes(option.key)}
-                              onChange={() => handleComboToggle(option.key)}
-                              className="h-4 w-4 rounded border-gray-300 accent-[#800000]"
-                            />
-                            {option.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedCombos.length > 0 && (
-                    <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-[#000000]">
-                          Selected ({selectedCombos.length})
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleClearAllCombos}
-                          className="flex items-center gap-1 text-xs font-semibold text-[#800000] hover:underline"
+                {isPickerOpen && (
+                  <div className={dropdownPanelClasses}>
+                    <label className={dropdownAllRowClasses}>
+                      <input
+                        type="checkbox"
+                        checked={isAllCombosSelected}
+                        onChange={handleToggleAllCombos}
+                        className="h-4 w-4 rounded border-gray-300 accent-[#800000]"
+                      />
+                      All
+                    </label>
+                    <div className="max-h-60 overflow-y-auto">
+                      {DEPT_SECTION_OPTIONS.map((option) => (
+                        <label
+                          key={option.key}
+                          className={dropdownOptionRowClasses(
+                            selectedCombos.includes(option.key),
+                          )}
                         >
-                          <Undo2 className="h-3 w-3" />
-                          Clear All
-                        </button>
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        {selectedCombos.map((key) => (
-                          <div
-                            key={key}
-                            className="flex items-center justify-between rounded-md bg-white px-3 py-1.5 text-xs text-[#000000] shadow-sm"
-                          >
-                            <span className="flex items-center gap-2">
-                              <Users className="h-3.5 w-3.5 text-[#800000]" />
-                              {getComboLabel(key)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveCombo(key)}
-                              className="rounded-full p-0.5 text-[#9CA3AF] transition hover:bg-[#800000]/10 hover:text-[#800000]"
-                              aria-label={`Remove ${getComboLabel(key)}`}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                          <input
+                            type="checkbox"
+                            checked={selectedCombos.includes(option.key)}
+                            onChange={() => handleComboToggle(option.key)}
+                            className="h-4 w-4 rounded border-gray-300 accent-[#800000]"
+                          />
+                          {option.label}
+                        </label>
+                      ))}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+
+                {selectedCombos.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[#000000]">
+                        Selected ({selectedCombos.length})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleClearAllCombos}
+                        className="flex items-center gap-1 text-xs font-semibold text-[#800000] hover:underline"
+                      >
+                        <Undo2 className="h-3 w-3" />
+                        Clear All
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {selectedCombos.map((key) => (
+                        <div
+                          key={key}
+                          className="flex items-center justify-between rounded-md bg-white px-3 py-1.5 text-xs text-[#000000] shadow-sm"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Users className="h-3.5 w-3.5 text-[#800000]" />
+                            {getComboLabel(key)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCombo(key)}
+                            className="rounded-full p-0.5 text-[#9CA3AF] transition hover:bg-[#800000]/10 hover:text-[#800000]"
+                            aria-label={`Remove ${getComboLabel(key)}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Admission Number (for Retest and University) */}
               {(category === "Retest" || category === "University") && (
@@ -1902,9 +1862,7 @@ export default function Schedule() {
                     ? "Assign Retest"
                     : category === "University"
                       ? "Schedule University Exam"
-                      : category === "Normal"
-                        ? "Schedule for All Sections"
-                        : "Confirm Schedule"}
+                      : "Schedule Exam"}
             </button>
 
             {scheduleDataError && (
