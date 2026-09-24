@@ -1,7 +1,12 @@
 const { ObjectId } = require("mongodb");
 const crypto = require("crypto");
 const { getDB } = require("../../config/db");
-const { toIST } = require("../../helper/ist_converter");
+const {
+  toIST,
+  getISTMinutes,
+  EXAM_START_MINUTES_IST,
+  EXAM_END_MINUTES_IST,
+} = require("../../helper/ist_converter");
 
 // ============================================================
 // GENERATE UNIQUE TEST CODE HELPER
@@ -252,6 +257,38 @@ const scheduleExam = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "End time must be greater than start time.",
+        });
+      }
+
+      // Restrict exam timing strictly from 8:30 AM to 5:00 PM IST
+      const startMinutes = getISTMinutes(start);
+      const endMinutes = getISTMinutes(end);
+
+      if (startMinutes < EXAM_START_MINUTES_IST) {
+        return res.status(400).json({
+          success: false,
+          message: "Exam start time cannot be earlier than 8:30 AM IST.",
+        });
+      }
+
+      if (endMinutes > EXAM_END_MINUTES_IST) {
+        return res.status(400).json({
+          success: false,
+          message: "Exam end time cannot be later than 5:00 PM IST.",
+        });
+      }
+
+      const istStartDate = new Date(
+        start.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      ).toDateString();
+      const istEndDate = new Date(
+        end.toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+      ).toDateString();
+
+      if (istStartDate !== istEndDate) {
+        return res.status(400).json({
+          success: false,
+          message: "Exam must start and end on the same day between 8:30 AM and 5:00 PM IST.",
         });
       }
     }

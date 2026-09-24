@@ -1,5 +1,6 @@
 const { ObjectId } = require("mongodb");
 const { getDB } = require("../../config/db");
+const { isWithinExamHoursIST } = require("../../helper/ist_converter");
 
 // ============================================================
 // RESUME STUDENT EXAM CONTROLLER (FOR ADMIN / STAFF)
@@ -19,6 +20,14 @@ const resumeStudentExam = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Question code is required.",
+      });
+    }
+
+    if (!isWithinExamHoursIST()) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Exams can only be resumed during exam hours (8:30 AM to 5:00 PM IST).",
       });
     }
 

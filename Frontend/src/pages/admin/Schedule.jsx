@@ -1016,6 +1016,32 @@ export default function Schedule() {
         }
       }
 
+      if (hasStartTime) {
+        const startMinutes = toMinutesSinceMidnight(
+          startHour,
+          startMinute,
+          startPeriod,
+        );
+        if (startMinutes < 510) {
+          problems.push("Start Time cannot be earlier than 8:30 AM IST");
+        } else if (startMinutes > 1020) {
+          problems.push("Start Time cannot be later than 5:00 PM IST");
+        }
+      }
+
+      if (hasEndTime) {
+        const endMinutes = toMinutesSinceMidnight(
+          endHour,
+          endMinute,
+          endPeriod,
+        );
+        if (endMinutes > 1020) {
+          problems.push("End Time cannot be later than 5:00 PM IST");
+        } else if (endMinutes < 510) {
+          problems.push("End Time cannot be earlier than 8:30 AM IST");
+        }
+      }
+
       if (hasStartTime && hasEndTime) {
         const startMinutes = toMinutesSinceMidnight(
           startHour,

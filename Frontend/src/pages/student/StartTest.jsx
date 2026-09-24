@@ -48,8 +48,23 @@ export default function InstructionsPage() {
     setTestCode(value);
   };
 
+  const isWithinExamHours = () => {
+    const istDate = new Date(
+      new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+    );
+    const minutes = istDate.getHours() * 60 + istDate.getMinutes();
+    return minutes >= 510 && minutes < 1020;
+  };
+
   // START TEST
   const handleStartTest = async () => {
+    if (!isWithinExamHours()) {
+      showStatusPopup(
+        "Examinations are only permitted during College Timing.",
+        "error"
+      );
+      return;
+    }
     try {
       // ==========================================
       // GET STUDENT SESSION
@@ -348,6 +363,10 @@ export default function InstructionsPage() {
                 number="07"
                 text="Complete and submit all questions within the allotted time."
               />
+              <Instruction
+                number="08"
+                text="Assessments are strictly permitted between 8:30 AM and 5:00 PM IST only."
+              />
             </div>
             {/* DIVIDER */}
             <div className="border-t border-gray-200 my-8"></div>
@@ -428,6 +447,12 @@ export default function InstructionsPage() {
               <p className="text-sm text-gray-500 mb-3">
                 Enter the test code provided by your faculty.
               </p>
+              {!isWithinExamHours() && (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm font-semibold flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>Examinations are only permitted during College Timing.</span>
+                </div>
+              )}
               {/* Test Code Input */}
               <input
                 id="testCode"
@@ -466,7 +491,7 @@ export default function InstructionsPage() {
             <div className="flex justify-end mt-10">
               <button
                 onClick={handleStartTest}
-                disabled={!accepted || !isValidTestCode}
+                disabled={!accepted || !isValidTestCode || !isWithinExamHours()}
                 className="
                                 px-8
                                 py-3

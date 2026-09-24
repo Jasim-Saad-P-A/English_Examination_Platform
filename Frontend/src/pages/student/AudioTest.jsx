@@ -30,6 +30,7 @@ export default function AudioTest() {
   const examClosedRef = useRef(false);
   const malpracticeReportingRef = useRef(false);
   const examRemainingRef = useRef(0);
+  const hasAutoSubmittedRef = useRef(false);
 
   const [examRemaining, setExamRemaining] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -712,10 +713,31 @@ export default function AudioTest() {
 
     const timer = setInterval(() => {
       setExamRemaining((prev) => {
-        if (prev <= 1) {
+        const istDate = new Date(
+          new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })
+        );
+        const istMinutes = istDate.getHours() * 60 + istDate.getMinutes();
+        const isPast5pmIST = istMinutes >= 1020 || istMinutes < 510;
+
+        if (prev <= 1 || isPast5pmIST) {
           clearInterval(timer);
 
           clearTestState(admissionNo, testId);
+
+          if (
+            !hasAutoSubmittedRef.current &&
+            !examClosedRef.current &&
+            (examData?.testId || testId) &&
+            admissionNo
+          ) {
+            hasAutoSubmittedRef.current = true;
+            submitExam({
+              testId: examData?.testId || testId,
+              admissionNo,
+            }).catch((err) => {
+              console.error("Auto submit on duration expiry error:", err);
+            });
+          }
 
           navigate("/student/dashboard");
 

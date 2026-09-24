@@ -3,6 +3,12 @@ const { getDB } = require("../../config/db");
 const {
   generateStudentExamPDF,
 } = require("../../service/student_result.service");
+const {
+  getISTDate,
+  getISTMinutes,
+  EXAM_START_MINUTES_IST,
+  EXAM_END_MINUTES_IST,
+} = require("../../helper/ist_converter");
 
 // =====================================================
 // SHUFFLE HELPERS (FISHER-YATES)
@@ -85,10 +91,28 @@ const startExam = async (req, res) => {
     }
 
     // =====================================================
-    // CHECK EXAM TIME
+    // CHECK EXAM TIME (8:30 AM to 5:00 PM IST)
     // =====================================================
 
     const now = new Date();
+    const istMinutesNow = getISTMinutes(now);
+
+    if (
+      istMinutesNow < EXAM_START_MINUTES_IST ||
+      istMinutesNow >= EXAM_END_MINUTES_IST
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Examinations are only permitted during College Timing.",
+      });
+    }
+
+    const istNow = getISTDate(now);
+    const secondsUntil5pmIST = Math.max(
+      0,
+      (EXAM_END_MINUTES_IST - istMinutesNow) * 60 - istNow.getSeconds()
+    );
 
     const startTime = exam.startTime ? new Date(exam.startTime) : null;
 
@@ -349,6 +373,12 @@ const startExam = async (req, res) => {
           }
         }
 
+        // Cap remaining time so it does not exceed 5:00 PM IST
+        remainingSeconds = Math.max(
+          0,
+          Math.min(remainingSeconds, secondsUntil5pmIST)
+        );
+
         return res.status(200).json({
           success: true,
           message: "Exam resumed successfully.",
@@ -439,7 +469,10 @@ const startExam = async (req, res) => {
       // false = exam submitted
       status: true,
 
-      timeRemaining: Number(exam.duration || 0) * 60,
+      timeRemaining: Math.max(
+        0,
+        Math.min(Number(exam.duration || 0) * 60, secondsUntil5pmIST)
+      ),
 
       timeSpent: 0,
 
@@ -482,7 +515,10 @@ const startExam = async (req, res) => {
 
       duration: exam.duration,
 
-      timeRemaining: Number(exam.duration || 0) * 60,
+      timeRemaining: Math.max(
+        0,
+        Math.min(Number(exam.duration || 0) * 60, secondsUntil5pmIST)
+      ),
 
       startedAt: startedAt,
 
@@ -735,6 +771,20 @@ const syncExam = async (req, res) => {
     const db = getDB();
 
     const { testId, admissionNo, questionNo, studentAnswer, timeRemaining } = req.body;
+
+    const now = new Date();
+    const istMinutesNow = getISTMinutes(now);
+
+    if (
+      istMinutesNow < EXAM_START_MINUTES_IST ||
+      istMinutesNow >= EXAM_END_MINUTES_IST
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Examination hours have ended (Examinations are restricted to 8:30 AM - 5:00 PM IST).",
+      });
+    }
 
     // ----------------------------
     // Handle time-only sync/heartbeat
