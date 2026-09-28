@@ -7,7 +7,11 @@ const reportMalpractice = async (req, res) => {
   try {
     const db = getDB();
 
-    const { testId, admissionNo, reason } = req.body;
+    const { testId, admissionNo, reason, timeRemaining } = req.body;
+    const timeRemainingVal =
+      timeRemaining != null && !isNaN(Number(timeRemaining))
+        ? Math.max(0, Math.floor(Number(timeRemaining)))
+        : null;
 
     // =====================================================
     // VALIDATION
@@ -115,14 +119,22 @@ const reportMalpractice = async (req, res) => {
         {
           $set: {
             status: false,
-
+            allowResume: false,
             result: "Malpractice",
-
+            ...(timeRemainingVal != null ? { timeRemaining: timeRemainingVal } : {}),
             submittedAt: detectedAt,
-
             updatedAt: detectedAt,
           },
         },
+      );
+
+      await db.collection("students").updateOne(
+        { admissionNo: String(admissionNo).trim() },
+        {
+          $set: {
+            allowResume: false,
+          },
+        }
       );
 
       return res.status(403).json({
@@ -145,6 +157,18 @@ const reportMalpractice = async (req, res) => {
     // =====================================================
     // LIMIT NOT EXCEEDED
     // =====================================================
+
+    if (timeRemainingVal != null) {
+      await db.collection("exam").updateOne(
+        { _id: exam._id },
+        {
+          $set: {
+            timeRemaining: timeRemainingVal,
+            updatedAt: detectedAt,
+          },
+        },
+      );
+    }
 
     const remaining = MALPRACTICE_LIMIT - violationNo;
 
@@ -169,7 +193,8 @@ const reportMalpractice = async (req, res) => {
     return res.status(500).json({
       success: false,
 
-      message: error.message || "Internal Server Error",
+      message: "Failed to report malpractice.",
+      error: error.message || "Unexpected server error.",
     });
   }
 };

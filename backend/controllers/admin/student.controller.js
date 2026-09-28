@@ -2,83 +2,114 @@ const bcrypt = require("bcrypt");
 const parseStudentExcel = require("../../utils/parseStudentExcel");
 const { getDB } = require("../../config/db");
 
-const studentsUpload = async (req, res) => {
-  try {
-    // Parse & Validate Excel
-    const parsedStudents = parseStudentExcel(req.files.student_data.buffer);
+const studentsUpload = async (req, res) => {try {
+  // Parse & Validate Excel
+  const parsedStudents = parseStudentExcel(req.files.student_data.buffer);
 
-    // Prepare student documents
-    const students = await Promise.all(
-      parsedStudents.map(async (student) => ({
-        ...student,
-        studentEditEnabled: true,
-        username: student.admissionNo,
-        password: student.dob,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      })),
-    );
+  // Prepare student documents
+  const students = await Promise.all(
+    parsedStudents.map(async (student) => ({
+      ...student,
+      studentEditEnabled: false,
+      firstlogin: true,
+      username: student.admissionNo,
+      password: student.dob,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })),
+  );
 
-    const db = getDB();
+  const db = getDB();
 
-    // Check for existing Admission Numbers or Register Numbers
-    const existingStudents = await db
-      .collection("students")
-      .find({
-        $or: [
-          {
-            admissionNo: {
-              $in: students.map((student) => student.admissionNo),
-            },
-          },
-          {
-            registerNo: {
-              $in: students
-                .filter((student) => student.registerNo)
-                .map((student) => student.registerNo),
-            },
-          },
-        ],
-      })
-      .toArray();
+  // Get admission numbers and register numbers from Excel
+  const admissionNos = students
+    .map((student) => student.admissionNo)
+    .filter(Boolean);
 
-    if (existingStudents.length > 0) {
-      const duplicateAdmissions = existingStudents
-        .map((student) => student.admissionNo)
-        .filter(Boolean);
+  const registerNos = students
+    .map((student) => student.registerNo)
+    .filter(Boolean);
 
-      const duplicateRegisters = existingStudents
-        .map((student) => student.registerNo)
-        .filter(Boolean);
+  // Find already existing students
+  const existingStudents = await db
+    .collection("students")
+    .find({
+      $or: [
+        { admissionNo: { $in: admissionNos } },
+        { registerNo: { $in: registerNos } },
+      ],
+    })
+    .project({
+      admissionNo: 1,
+      registerNo: 1,
+    })
+    .toArray();
 
-      return res.status(400).json({
-        success: false,
-        message: "Some students already exist.",
-        duplicates: {
-          admissionNo: duplicateAdmissions,
-          registerNo: duplicateRegisters,
-        },
-      });
-    }
+  // Create sets for faster duplicate checking
+  const existingAdmissionNos = new Set(
+    existingStudents
+      .map((student) => student.admissionNo)
+      .filter(Boolean),
+  );
 
-    // Insert students
-    const result = await db.collection("students").insertMany(students);
+  const existingRegisterNos = new Set(
+    existingStudents
+      .map((student) => student.registerNo)
+      .filter(Boolean),
+  );
 
-    return res.status(201).json({
+  // Skip already existing students
+  const newStudents = students.filter((student) => {
+    const admissionExists = existingAdmissionNos.has(student.admissionNo);
+
+    const registerExists =
+      student.registerNo && existingRegisterNos.has(student.registerNo);
+
+    return !admissionExists && !registerExists;
+  });
+
+  // If everything already exists
+  if (newStudents.length === 0) {
+    return res.status(200).json({
       success: true,
-      message: "Students uploaded successfully.",
-      totalStudents: result.insertedCount,
-      insertedIds: result.insertedIds,
-    });
-  } catch (error) {
-    console.error("Student Upload Error:", error);
-
-    return res.status(error.status || 500).json({
-      success: false,
-      message: error.message || "Internal Server Error",
+      message: "All students already exist. Nothing was inserted.",
+      totalStudents: students.length,
+      insertedStudents: 0,
+      skippedStudents: students.length,
     });
   }
-};
+
+  // Insert only new students
+  const result = await db
+    .collection("students")
+    .insertMany(newStudents);
+
+  return res.status(201).json({
+    success: true,
+    message: "Students uploaded successfully. Existing students were skipped.",
+    totalStudents: students.length,
+    insertedStudents: result.insertedCount,
+    skippedStudents: students.length - result.insertedCount,
+    insertedIds: result.insertedIds,
+  });
+} catch (error) {
+  console.error("Student Upload Error:", error);
+
+  const status = error.status || 500;
+
+  return res.status(status).json(
+    status < 500
+      ? {
+          success: false,
+          message: error.message,
+        }
+      : {
+          success: false,
+          message: "Failed to upload students.",
+          error: error.message || "Unexpected server error.",
+        },
+  );
+}};
 
 const updateStudent = async (req, res) => {
   try {
@@ -119,10 +150,20 @@ const updateStudent = async (req, res) => {
   } catch (error) {
     console.error("Student Update Error:", error);
 
-    return res.status(error.status || 500).json({
-      success: false,
-      message: error.message || "Internal Server Error",
-    });
+    const status = error.status || 500;
+
+    return res.status(status).json(
+      status < 500
+        ? {
+            success: false,
+            message: error.message,
+          }
+        : {
+            success: false,
+            message: "Failed to update students.",
+            error: error.message || "Unexpected server error.",
+          },
+    );
   }
 };
 
@@ -165,10 +206,12 @@ const getStudentByUsername = async (req, res) => {
     const exams = await db
       .collection("exam")
       .aggregate([
-        // Find exams for this student
+        // Find exams for this student (exclude university exams)
         {
           $match: {
             admissionNo: student.admissionNo,
+            category: { $not: { $regex: /^university$/i } },
+            cie: { $not: { $regex: /^university$/i } },
           },
         },
 
@@ -217,6 +260,9 @@ const getStudentByUsername = async (req, res) => {
             // CIE value
             cie: 1,
 
+            // Exam type
+            type: { $ifNull: ["$questionDetails.type", "audio"] },
+
             // Marks
             obtainedMarks: 1,
             totalMarks: 1,
@@ -243,7 +289,48 @@ const getStudentByUsername = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to load student.",
+      error: error.message || "Unexpected server error.",
+    });
+  }
+};
+
+// deleteStudent by admin/staff
+const deleteStudent = async (req, res) => {
+  try {
+    const { admissionNo } = req.body;
+
+    if (!admissionNo || !admissionNo.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Admission number is required.",
+      });
+    }
+
+    const db = getDB();
+
+    const result = await db.collection("students").deleteOne({
+      admissionNo: admissionNo.trim(),
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Student ${admissionNo.trim()} deleted successfully.`,
+    });
+  } catch (error) {
+    console.error("DELETE STUDENT ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete student.",
+      error: error.message || "Unexpected server error.",
     });
   }
 };
@@ -252,4 +339,5 @@ module.exports = {
   studentsUpload,
   updateStudent,
   getStudentByUsername,
+  deleteStudent,
 };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   FileText,
@@ -10,10 +10,19 @@ import {
   AlertTriangle,
   Download,
   Trash2,
+  BookOpen,
 } from "lucide-react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { uploadQuestions, getQuestionFormData, deleteQuestionSet } from "../../services/adminService";
+import {
+  uploadQuestions,
+  getQuestionFormData,
+  deleteQuestionSet,
+} from "../../services/adminService";
+import { getApiErrorMessage } from "../../utils/apiError";
+
+// 👇 Update this import path to point to where you saved your ThemeDropdown component
+import ThemeDropdown from "../../components/common/ThemeDropDown";
 
 /* ============================================================
    Question Upload card
@@ -25,7 +34,9 @@ import { uploadQuestions, getQuestionFormData, deleteQuestionSet } from "../../s
 function QuestionUploadCard() {
   const [showInstructions, setShowInstructions] = useState(false);
   const [showMp3Popup, setShowMp3Popup] = useState(false);
+  const [examType, setExamType] = useState("audio"); // "audio" | "comprehension"
   const [questionCode, setQuestionCode] = useState("");
+  const [passage, setPassage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [audioFile, setAudioFile] = useState(null);
   const [questionFile, setQuestionFile] = useState(null);
@@ -35,8 +46,7 @@ function QuestionUploadCard() {
       id: 1,
       text: (
         <>
-          Enter a clear and meaningful <b>Question Code</b> for the English
-          test.
+          Select the <b>Examination Type</b>: Audio Listening or Paragraph Comprehension.
         </>
       ),
     },
@@ -44,7 +54,7 @@ function QuestionUploadCard() {
       id: 2,
       text: (
         <>
-          Upload the <b>audio file in MP3 format only</b>.
+          Enter a clear and meaningful <b>Question Code</b> for the English test.
         </>
       ),
     },
@@ -52,9 +62,11 @@ function QuestionUploadCard() {
       id: 3,
       text: (
         <>
-          Upload the questions file in the required <b>Excel (.xlsx) format</b>.
-          Please reference and use the <b>template.xlsx</b> file to ensure
-          correct formatting.
+          {examType === "audio" ? (
+            <>Upload the <b>audio file in MP3 format only</b>.</>
+          ) : (
+            <>Enter or paste the <b>Reading Comprehension Passage / Paragraph</b>.</>
+          )}
         </>
       ),
     },
@@ -62,8 +74,9 @@ function QuestionUploadCard() {
       id: 4,
       text: (
         <>
-          Make sure the audio is clear and the questions file follows the
-          correct format.
+          Upload the questions file in the required <b>Excel (.xlsx) format</b>.
+          Please reference and use the <b>template.xlsx</b> file to ensure
+          correct formatting.
         </>
       ),
     },
@@ -105,14 +118,18 @@ function QuestionUploadCard() {
   };
 
   const handleSubmit = async () => {
-
     if (!questionCode.trim()) {
       toast.error("Please enter a Question Code.");
       return;
     }
 
-    if (!audioFile) {
+    if (examType === "audio" && !audioFile) {
       toast.error("Please upload an MP3 audio file.");
+      return;
+    }
+
+    if (examType === "comprehension" && !passage.trim()) {
+      toast.error("Please enter the reading comprehension passage.");
       return;
     }
 
@@ -126,49 +143,40 @@ function QuestionUploadCard() {
     setIsSubmitting(true);
 
     try {
-
       const data = await uploadQuestions({
         questionCode,
-        audioFile,
+        type: examType,
+        audioFile: examType === "audio" ? audioFile : null,
+        passage: examType === "comprehension" ? passage : null,
         questionFile,
       });
 
       if (!data.success) {
-        throw new Error(
-          data.message ||
-          "Failed to upload question."
-        );
+        throw new Error(data.message || "Failed to upload question.");
       }
 
-      toast.success("Question uploaded successfully.");
+      toast.success(
+        `${examType === "comprehension" ? "Paragraph Comprehension" : "Audio"} Question uploaded successfully.`
+      );
 
       setQuestionCode("");
+      setPassage("");
       setAudioFile(null);
       setQuestionFile(null);
 
-      document.getElementById(
-        "audio-upload"
-      ).value = "";
-
-      document.getElementById(
-        "excel-upload"
-      ).value = "";
-
+      const audioInput = document.getElementById("audio-upload");
+      if (audioInput) audioInput.value = "";
+      const excelInput = document.getElementById("excel-upload");
+      if (excelInput) excelInput.value = "";
     } catch (error) {
-
-      console.error(
-        "Upload Question Error:",
-        error
-      );
-
+      console.error("Upload Question Error:", error);
       toast.error(
-        error.response?.data?.message ||
-        error.message ||
-        "Something went wrong while creating the question."
+        getApiErrorMessage(
+          error,
+          "Something went wrong while creating the question.",
+        ),
       );
-
     } finally {
-
       setIsSubmitting(false);
     }
   };
@@ -207,8 +215,41 @@ function QuestionUploadCard() {
         </div>
       </div>
 
-      {/* Content - no overflow/scroll here, the page scrolls instead */}
+      {/* Content */}
       <div className="p-6 sm:p-8 space-y-6">
+        {/* Exam Type Selector */}
+        <div>
+          <label className="block text-sm font-bold text-[#800000] mb-2">
+            Examination Type
+          </label>
+          <div className="grid grid-cols-2 gap-3 p-1.5 bg-gray-100 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setExamType("audio")}
+              className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-semibold text-sm transition-all ${
+                examType === "audio"
+                  ? "bg-[#800000] text-white shadow-sm"
+                  : "text-gray-700 hover:text-black"
+              }`}
+            >
+              <Headphones size={18} />
+              Audio Listening
+            </button>
+            <button
+              type="button"
+              onClick={() => setExamType("comprehension")}
+              className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-semibold text-sm transition-all ${
+                examType === "comprehension"
+                  ? "bg-[#800000] text-white shadow-sm"
+                  : "text-gray-700 hover:text-black"
+              }`}
+            >
+              <BookOpen size={18} />
+              Paragraph Comprehension
+            </button>
+          </div>
+        </div>
+
         {/* Question Code */}
         <div>
           <label className="flex items-center gap-2 text-sm font-bold text-[#800000] mb-2">
@@ -217,37 +258,82 @@ function QuestionUploadCard() {
           </label>
           <input
             type="text"
-            placeholder="Enter question code"
+            placeholder="Enter question code (e.g. COMP-01 or AUD-01)"
             value={questionCode}
             onChange={(e) => setQuestionCode(e.target.value)}
             className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all placeholder:text-gray-400"
           />
         </div>
 
-        {/* Audio Upload Dropzone */}
-        <div>
-          <label className="flex items-center gap-2 text-sm font-bold text-[#800000] mb-2">
-            <Headphones size={16} />
-            Audio File
-          </label>
-          <input
-            type="file"
-            id="audio-upload"
-            className="hidden"
-            accept=".mp3"
-            onChange={handleAudioChange}
-          />
-          <label
-            htmlFor="audio-upload"
-            className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[#D4AF37] rounded-xl cursor-pointer bg-gray-50/50 hover:bg-[#FFF9E8] transition-colors"
-          >
-            <Upload size={24} className="text-[#D4AF37] mb-2" />
-            <p className="font-semibold text-gray-700 text-center px-4 line-clamp-1 break-all">
-              {audioFile ? audioFile.name : "Click to upload Audio"}
-            </p>
-            <span className="text-sm text-gray-500 mt-1">MP3 only</span>
-          </label>
-        </div>
+        {/* Audio Upload Dropzone (Audio only) */}
+        {examType === "audio" && (
+          <div>
+            <label className="flex items-center gap-2 text-sm font-bold text-[#800000] mb-2">
+              <Headphones size={16} />
+              Audio File
+            </label>
+            <input
+              type="file"
+              id="audio-upload"
+              className="hidden"
+              accept=".mp3"
+              onChange={handleAudioChange}
+            />
+            <label
+              htmlFor="audio-upload"
+              className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[#D4AF37] rounded-xl cursor-pointer bg-gray-50/50 hover:bg-[#FFF9E8] transition-colors"
+            >
+              <Upload size={24} className="text-[#D4AF37] mb-2" />
+              <p className="font-semibold text-gray-700 text-center px-4 line-clamp-1 break-all">
+                {audioFile ? audioFile.name : "Click to upload Audio"}
+              </p>
+              <span className="text-sm text-gray-500 mt-1">MP3 only</span>
+            </label>
+          </div>
+        )}
+
+        {/* Paragraph / Passage Input (Comprehension only) */}
+        {examType === "comprehension" && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="flex items-center gap-2 text-sm font-bold text-[#800000]">
+                <BookOpen size={16} />
+                Reading Passage / Paragraph
+              </label>
+              <span className="text-xs text-gray-500 font-medium">
+                {passage.trim()
+                  ? `${passage.trim().split(/\s+/).length} words`
+                  : "0 words"}
+              </span>
+            </div>
+            <textarea
+              rows={7}
+              placeholder="Paste or type the full reading comprehension passage/paragraphs here..."
+              value={passage}
+              onChange={(e) => setPassage(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all placeholder:text-gray-400 text-sm leading-relaxed"
+            />
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+              <span>Students will read this passage during the examination.</span>
+              <label className="cursor-pointer text-[#800000] hover:underline font-semibold">
+                Import from text file
+                <input
+                  type="file"
+                  accept=".txt,.md"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => setPassage(event.target.result);
+                      reader.readAsText(file);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+        )}
 
         {/* Excel Upload Dropzone */}
         <div>
@@ -288,10 +374,11 @@ function QuestionUploadCard() {
           type="button"
           onClick={handleSubmit}
           disabled={isSubmitting}
-          className={`w-full sm:w-auto min-w-[180px] h-[46px] flex items-center justify-center gap-2 rounded-xl font-semibold shadow-md transition-all ${isSubmitting
-            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-            : "bg-[#FDCC03] hover:bg-[#800000] hover:text-white text-gray-900 cursor-pointer"
-            }`}
+          className={`w-full sm:w-auto min-w-[180px] h-[46px] flex items-center justify-center gap-2 rounded-xl font-semibold shadow-md transition-all ${
+            isSubmitting
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-[#FDCC03] hover:bg-[#800000] hover:text-white text-gray-900 cursor-pointer"
+          }`}
         >
           {isSubmitting ? (
             <>
@@ -307,8 +394,7 @@ function QuestionUploadCard() {
         </button>
       </div>
 
-      {/* MP3 Popup - portaled + very high z-index so it always sits above any
-          fixed/sticky site header, and can never be clipped by an ancestor. */}
+      {/* MP3 Popup */}
       {showMp3Popup &&
         createPortal(
           <div
@@ -392,24 +478,42 @@ function QuestionUploadCard() {
 }
 
 /* ============================================================
-   Delete Question card
-
-   Lets staff enter a Question Code and delete that question - for
-   cases where the wrong question/audio/excel was uploaded by mistake.
-
-   NOTE: adjust the delete URL below to match your backend's real
-   delete route - this follows the same base URL / auth pattern as the
-   upload request above, but confirm the exact path and HTTP method
-   your API expects.
+   Delete Question card (Using ThemeDropdown)
    ============================================================ */
 function DeleteQuestionCard() {
   const [questionCode, setQuestionCode] = useState("");
+  const [questionsList, setQuestionsList] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
+  // Fetch available questions when the component mounts
+  useEffect(() => {
+    const fetchQuestions = async () => {
+      setIsLoading(true);
+      try {
+        const formData = await getQuestionFormData();
+        if (formData.success) {
+          setQuestionsList(formData?.data?.tests || []);
+        } else {
+          toast.error("Failed to load questions list.");
+        }
+      } catch (error) {
+        console.error("Fetch Questions Error:", error);
+        toast.error(
+          getApiErrorMessage(error, "Could not fetch available questions."),
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchQuestions();
+  }, []);
+
   const handleDeleteClick = () => {
     if (!questionCode.trim()) {
-      toast.error("Please enter a Question Code.");
+      toast.error("Please select a Question Code.");
       return;
     }
     setShowConfirm(true);
@@ -417,111 +521,45 @@ function DeleteQuestionCard() {
 
   const handleConfirmDelete = async () => {
     if (isDeleting) return;
-
     setIsDeleting(true);
 
     try {
+      const questionSet = questionsList.find(
+        (item) => item.questionCode === questionCode,
+      );
 
-      // =====================================================
-      // 1. GET FORM DATA
-      // =====================================================
-
-      const formData = await getQuestionFormData();
-
-      if (!formData.success) {
-        throw new Error(
-          formData.message ||
-          "Failed to fetch question data."
-        );
+      if (!questionSet || !questionSet.questionSetId) {
+        throw new Error("Question ID was not found for this code.");
       }
 
-      // =====================================================
-      // 2. GET TESTS ARRAY
-      // =====================================================
-
-      const questionList =
-        formData?.data?.tests || [];
-
-      // =====================================================
-      // 3. FIND QUESTION USING QUESTION CODE
-      // =====================================================
-
-      const enteredQuestionCode = questionCode.trim().toLowerCase();
-
-      const questionSet =
-        questionList.find(
-          (item) =>
-            item.questionCode
-              ?.trim()
-              .toLowerCase() ===
-            enteredQuestionCode
-        );
-
-      if (!questionSet) {
-
-        setShowConfirm(false);
-
-        toast.error(
-          `Question code "${questionCode.trim()}" was not found.`
-        );
-
-        return;
-      }
-
-      // =====================================================
-      // 4. GET QUESTION SET ID
-      // =====================================================
-
-      const questionSetId = questionSet.questionSetId;
-
-      if (!questionSetId) {
-        throw new Error(
-          "Question ID was not found for this question code."
-        );
-      }
-
-      // =====================================================
-      // 5. DELETE QUESTION SET
-      // =====================================================
-
-      const deleteData = await deleteQuestionSet(questionSetId);
+      const deleteData = await deleteQuestionSet(questionSet.questionSetId);
 
       if (!deleteData.success) {
-        throw new Error(
-          deleteData.message ||
-          "Failed to delete question."
-        );
+        throw new Error(deleteData.message || "Failed to delete question.");
       }
 
-      // =====================================================
-      // 6. SUCCESS
-      // =====================================================
-
-      toast.success(
-        "Question deleted successfully."
-      );
+      toast.success("Question deleted successfully.");
 
       setQuestionCode("");
       setShowConfirm(false);
-
+      setQuestionsList((prev) =>
+        prev.filter((item) => item.questionCode !== questionCode),
+      );
     } catch (error) {
-
-      console.error(
-        "Delete Question Error:",
-        error
-      );
-
+      console.error("Delete Question Error:", error);
       toast.error(
-        error.response?.data?.message ||
-        error.message ||
-        "Something went wrong while deleting the question."
+        getApiErrorMessage(
+          error,
+          "Something went wrong while deleting the question.",
+        ),
       );
-
     } finally {
-
       setIsDeleting(false);
     }
   };
+
+  // Extract array of strings for the custom ThemeDropdown component
+  const questionOptions = questionsList.map((q) => q.questionCode);
 
   return (
     <div className="w-full max-w-[650px] mx-auto bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.08)] flex flex-col">
@@ -540,14 +578,18 @@ function DeleteQuestionCard() {
         <div>
           <label className="flex items-center gap-2 text-sm font-bold text-[#800000] mb-2">
             <FileText size={16} />
-            Question Code
+            Select Question Code
           </label>
-          <input
-            type="text"
-            placeholder="Enter question code to delete"
+
+          {/* Using custom ThemeDropdown */}
+          <ThemeDropdown
+            icon={FileText}
             value={questionCode}
-            onChange={(e) => setQuestionCode(e.target.value)}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all placeholder:text-gray-400"
+            options={questionOptions}
+            onChange={(val) => setQuestionCode(val)}
+            placeholder="-- Select a Question Code --"
+            loading={isLoading}
+            disabled={isLoading}
           />
         </div>
       </div>
@@ -562,11 +604,12 @@ function DeleteQuestionCard() {
         <button
           type="button"
           onClick={handleDeleteClick}
-          disabled={isDeleting}
-          className={`w-full sm:w-auto min-w-[180px] h-[46px] flex items-center justify-center gap-2 rounded-xl font-semibold shadow-md transition-all ${isDeleting
-            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-            : "bg-[#800000] hover:bg-[#5e0000] text-white cursor-pointer"
-            }`}
+          disabled={isDeleting || !questionCode}
+          className={`w-full sm:w-auto min-w-[180px] h-[46px] flex items-center justify-center gap-2 rounded-xl font-semibold shadow-md transition-all ${
+            isDeleting || !questionCode
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              : "bg-[#800000] hover:bg-[#5e0000] text-white cursor-pointer"
+          }`}
         >
           {isDeleting ? (
             <>
@@ -582,8 +625,7 @@ function DeleteQuestionCard() {
         </button>
       </div>
 
-      {/* Confirm Delete Popup - portaled + very high z-index so it always
-          sits above any fixed/sticky site header. */}
+      {/* Confirm Delete Popup */}
       {showConfirm &&
         createPortal(
           <div
@@ -638,14 +680,6 @@ function DeleteQuestionCard() {
 
 /* ============================================================
    Question Upload Management landing page (default export)
-
-   Mirrors the Student Data Management layout: an icon + title +
-   subtitle outside any card, a segmented pill control to switch
-   between the two actions, and the relevant card rendered below.
-
-   No fixed-height / overflow-hidden wrapper here on purpose - this
-   section sits in the normal page flow so the browser page scrolls
-   if content is tall, rather than any card scrolling internally.
    ============================================================ */
 export default function QuestionUploadManagement() {
   const [activeTab, setActiveTab] = useState("upload");
@@ -681,10 +715,11 @@ export default function QuestionUploadManagement() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm sm:text-base font-semibold transition-colors ${isActive
-                  ? "bg-[#800000] text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-800"
-                  }`}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm sm:text-base font-semibold transition-colors ${
+                  isActive
+                    ? "bg-[#800000] text-white shadow-sm"
+                    : "text-gray-600 hover:text-gray-800"
+                }`}
               >
                 <Icon size={16} className={isActive ? "text-[#FDCC03]" : ""} />
                 {tab.label}

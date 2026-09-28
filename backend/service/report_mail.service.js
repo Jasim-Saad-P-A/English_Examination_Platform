@@ -12,7 +12,8 @@ const sendExamPDFEmail = async ({
     questionCode, // <-- ADDED THIS
     questions = [], 
     pdfBuffer,
-    filename
+    filename,
+    isMalpractice = false,
 }) => {
 
     const boundary =
@@ -47,7 +48,8 @@ const sendExamPDFEmail = async ({
         getEmailTemplate(
             studentName,
             examTitle,
-            questionCode // <-- PASSED THIS TO TEMPLATE
+            questionCode,
+            isMalpractice
         );
 
 

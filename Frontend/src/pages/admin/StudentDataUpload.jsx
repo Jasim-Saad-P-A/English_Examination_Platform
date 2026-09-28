@@ -4,6 +4,7 @@ import {
   CloudUpload,
   Info,
   CheckCircle2,
+  Trash2,
   X,
   ShieldCheck,
   FileSpreadsheet,
@@ -24,12 +25,15 @@ import {
   ChevronDown,
 } from "lucide-react";
 import ThemeDropdown from "../../components/common/ThemeDropDown";
+import ConfirmModal from "../../components/common/ConfirmModal";
 import {
   uploadStudentData,
   getExistingStudents,
   getScheduleFormData,
+  deleteStudent
 } from "../../services/adminService";
 import "./StudentDataUpload.css";
+import { getApiErrorMessage } from "../../utils/apiError";
 
 const TEMPLATE_URL = `${import.meta.env.VITE_BASE_URL}/templates/STUDENT_DATA_UPLOAD_TEMPLATE.xlsx`;
 
@@ -55,10 +59,10 @@ const normalizeStudent = (student = {}) => ({
   id: getValue(student, ["_id"]),
   name: getValue(student, ["name"]),
   registerNo: getValue(student, ["registerNo"]),
-  admissionNo: getValue(student, ["admissionNo",]),
+  admissionNo: getValue(student, ["admissionNo"]),
   email: getValue(student, ["email"]),
   phone: getValue(student, ["phone"]),
-  department: getValue(student, ["branch"]),
+  department: getValue(student, ["department","branch"]),
   year: getValue(student, ["year"]),
   section: getValue(student, ["section"]),
   batch: getValue(student, ["batch"]),
@@ -71,40 +75,45 @@ const uploadInstructions = [
     title: "Use the correct Excel file",
     description: (
       <>
-        Upload only Excel files with <strong>.xlsx</strong> extension. The file must be less than <strong>10 MB</strong> and cannot be empty.
+        Upload only Excel files with <strong>.xlsx</strong> extension. The file
+        must be less than <strong>10 MB</strong> and cannot be empty.
       </>
-    )
+    ),
   },
   {
     id: "02",
     title: "Keep the column names unchanged",
-    description: "Use the exact template headers: Name, Reg_no, Admission_no, Email, Phone, Branch, Year, Section, Batch, DOB."
+    description:
+      "Use the exact template headers: Name, Reg_no, Admission_no, Email, Phone, Branch, Year, Section, Batch, DOB.",
   },
   {
     id: "03",
     title: "Follow strict data formatting",
     description: (
       <>
-        <strong>DOB</strong> must be exactly <strong>DD-MM-YYYY</strong>. <strong>Phone numbers</strong> must be exactly <strong>10 digits</strong>.
+        <strong>DOB</strong> must be exactly <strong>DD-MM-YYYY</strong>.{" "}
+        <strong>Phone numbers</strong> must be exactly{" "}
+        <strong>10 digits</strong>.
       </>
-    )
+    ),
   },
   {
     id: "04",
     title: "Ensure unique records",
     description: (
       <>
-        <strong>Admission_no</strong> must be unique. Duplicate records will cause the upload to fail.
+        <strong>Admission_no</strong> must be unique. Duplicate records will
+        cause the upload to fail.
       </>
-    )
+    ),
   },
   {
     id: "05",
     title: "Valid values required",
-    description: "Year must be 1-4. Departments must match approved courses. Remove empty rows before uploading."
-  }
+    description:
+      "Year must be 1-4. Departments must match approved courses. Remove empty rows before uploading.",
+  },
 ];
-
 
 const toArray = (value) => {
   if (Array.isArray(value)) return value;
@@ -170,6 +179,11 @@ const StudentDataUpload = () => {
 
   const [existingMessage, setExistingMessage] = useState("");
   const [existingMessageType, setExistingMessageType] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState({
+    isOpen: false,
+    student: null,
+    isLoading: false,
+  });
 
   const [studentSearch, setStudentSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -198,10 +212,7 @@ const StudentDataUpload = () => {
     }
 
     if (!isExcelFile(file)) {
-      showMessage(
-        "Only Excel files (.xlsx or .xls) are allowed.",
-        "error"
-      );
+      showMessage("Only Excel files (.xlsx or .xls) are allowed.", "error");
       return false;
     }
 
@@ -295,8 +306,8 @@ const StudentDataUpload = () => {
         throw new Error(
           getErrorMessage(
             data,
-            "Unable to load batch, branch and section data."
-          )
+            "Unable to load batch, branch and section data.",
+          ),
         );
       }
 
@@ -310,9 +321,7 @@ const StudentDataUpload = () => {
           department: String(item?.department ?? "").trim(),
           section: String(item?.section ?? "").trim(),
         }))
-        .filter(
-          (item) => item.batch && item.department && item.section
-        );
+        .filter((item) => item.batch && item.department && item.section);
 
       setBatchDepartmentSections(normalizedRows);
 
@@ -333,7 +342,10 @@ const StudentDataUpload = () => {
       setStudents([]);
 
       showExistingError(
-        "Unable to load batch, branch and section data."
+        getApiErrorMessage(
+          error,
+          "Unable to load batch, branch and section data.",
+        ),
       );
     } finally {
       setLoadingScheduleData(false);
@@ -343,14 +355,12 @@ const StudentDataUpload = () => {
   const batchOptions = useMemo(
     () =>
       [...new Set(batchDepartmentSections.map((item) => item.batch))].sort(),
-    [batchDepartmentSections]
+    [batchDepartmentSections],
   );
 
   const departmentOptions = useMemo(() => {
     const rows = selectedBatch
-      ? batchDepartmentSections.filter(
-        (item) => item.batch === selectedBatch
-      )
+      ? batchDepartmentSections.filter((item) => item.batch === selectedBatch)
       : batchDepartmentSections;
 
     return [...new Set(rows.map((item) => item.department))].sort();
@@ -360,7 +370,7 @@ const StudentDataUpload = () => {
     const rows = batchDepartmentSections.filter(
       (item) =>
         (!selectedBatch || item.batch === selectedBatch) &&
-        (!selectedDepartment || item.department === selectedDepartment)
+        (!selectedDepartment || item.department === selectedDepartment),
     );
 
     return [...new Set(rows.map((item) => item.section))].sort();
@@ -384,22 +394,15 @@ const StudentDataUpload = () => {
     setMessage("");
 
     try {
-      const data = await uploadStudentData(
-        selectedFile
-      );
+      const data = await uploadStudentData(selectedFile);
 
       if (data?.success === false) {
-        throw new Error(
-          getErrorMessage(
-            data,
-            "Student data upload failed."
-          )
-        );
+        throw new Error(getErrorMessage(data, "Student data upload failed."));
       }
 
       showMessage(
         getErrorMessage(data, "Student data uploaded successfully."),
-        "success"
+        "success",
       );
 
       setSelectedFile(null);
@@ -407,7 +410,6 @@ const StudentDataUpload = () => {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-
 
       if (selectedBatch && selectedDepartment && selectedSection) {
         await fetchExistingStudents({
@@ -419,8 +421,8 @@ const StudentDataUpload = () => {
       console.error("Student upload error:", error);
 
       showMessage(
-        "Something went wrong while uploading.",
-        "error"
+        getApiErrorMessage(error, "Something went wrong while uploading."),
+        "error",
       );
     } finally {
       setUploading(false);
@@ -432,9 +434,7 @@ const StudentDataUpload = () => {
     resetSearch = true,
   } = {}) => {
     if (!selectedBatch || !selectedDepartment || !selectedSection) {
-      showExistingError(
-        "Please select batch, branch and section."
-      );
+      showExistingError("Please select batch, branch and section.");
       return;
     }
 
@@ -457,15 +457,8 @@ const StudentDataUpload = () => {
         section: selectedSection,
       });
 
-      console.log("Existing student data API response:",data);
-
       if (data?.success === false) {
-        throw new Error(
-          getErrorMessage(
-            data,
-            "Unable to load student data."
-          )
-        );
+        throw new Error(getErrorMessage(data, "Unable to load student data."));
       }
       const rawStudents = toArray(data);
       const normalizedStudents = rawStudents.map(normalizeStudent);
@@ -480,10 +473,56 @@ const StudentDataUpload = () => {
 
       setStudents([]);
       showExistingError(
-        "Unable to load existing student data."
+        getApiErrorMessage(error, "Unable to load existing student data."),
       );
     } finally {
       setLoadingStudents(false);
+    }
+  };
+  const handleDeleteStudent = (student) => {
+    if (!student?.admissionNo) {
+      showExistingError("Admission number is missing.");
+      return;
+    }
+
+    setDeleteConfirm({
+      isOpen: true,
+      student,
+      isLoading: false,
+    });
+  };
+
+  const confirmDeleteStudent = async () => {
+    const student = deleteConfirm.student;
+    if (!student?.admissionNo) return;
+
+    try {
+      setDeleteConfirm((prev) => ({ ...prev, isLoading: true }));
+      const data = await deleteStudent(student.admissionNo);
+
+      if (data?.success === false) {
+        throw new Error(
+          getErrorMessage(data, "Unable to delete student.")
+        );
+      }
+
+      setStudents((prevStudents) =>
+        prevStudents.filter(
+          (item) => item.admissionNo !== student.admissionNo
+        )
+      );
+
+      setExistingMessage(
+        data?.message || "Student deleted successfully."
+      );
+      setExistingMessageType("success");
+      setDeleteConfirm({ isOpen: false, student: null, isLoading: false });
+    } catch (error) {
+      console.error("Delete student error:", error);
+      showExistingError(
+        getApiErrorMessage(error, "Unable to delete student.")
+      );
+      setDeleteConfirm((prev) => ({ ...prev, isLoading: false }));
     }
   };
 
@@ -497,18 +536,18 @@ const StudentDataUpload = () => {
     return students.filter((student) =>
       String(student.name || "")
         .toLowerCase()
-        .includes(search)
+        .includes(search),
     );
   }, [students, studentSearch]);
 
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE)
+    Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE),
   );
 
   const paginatedStudents = filteredStudents.slice(
     (currentPage - 1) * STUDENTS_PER_PAGE,
-    currentPage * STUDENTS_PER_PAGE
+    currentPage * STUDENTS_PER_PAGE,
   );
 
   useEffect(() => {
@@ -534,10 +573,7 @@ const StudentDataUpload = () => {
 
   const handleDownloadTemplate = () => {
     if (!TEMPLATE_URL) {
-      showMessage(
-        "Student data template URL is not configured.",
-        "error"
-      );
+      showMessage("Student data template URL is not configured.", "error");
       return;
     }
 
@@ -563,7 +599,6 @@ const StudentDataUpload = () => {
   };
 
   const handleDepartmentChange = (department) => {
-
     setSelectedDepartment(department);
     setSelectedSection("");
     setStudents([]);
@@ -593,8 +628,7 @@ const StudentDataUpload = () => {
           <div className="student-upload-title">
             <h1>Student Data Management</h1>
             <p>
-              Upload new student records or view existing student
-              information
+              Upload new student records or view existing student information
             </p>
           </div>
         </div>
@@ -602,8 +636,7 @@ const StudentDataUpload = () => {
         <div className="student-mode-switch">
           <button
             type="button"
-            className={`mode-button ${activeMode === "upload" ? "active" : ""
-              }`}
+            className={`mode-button ${activeMode === "upload" ? "active" : ""}`}
             onClick={() => handleModeChange("upload")}
           >
             <Upload size={17} />
@@ -691,9 +724,7 @@ const StudentDataUpload = () => {
                     <strong>.xls</strong>
                   </p>
 
-                  <p className="size-text">
-                    Maximum file size: 10 MB
-                  </p>
+                  <p className="size-text">Maximum file size: 10 MB</p>
                 </>
               ) : (
                 <div
@@ -708,8 +739,6 @@ const StudentDataUpload = () => {
                     <h3>{selectedFile.name}</h3>
 
                     <p>{formatFileSize(selectedFile.size)}</p>
-
-
                   </div>
 
                   <button
@@ -727,8 +756,7 @@ const StudentDataUpload = () => {
 
             <button
               type="button"
-              className={`upload-submit-button ${uploading ? "uploading" : ""
-                }`}
+              className={`upload-submit-button ${uploading ? "uploading" : ""}`}
               disabled={!selectedFile || uploading}
               onClick={handleUpload}
             >
@@ -747,9 +775,7 @@ const StudentDataUpload = () => {
 
             <div className="upload-security-note">
               <ShieldCheck size={14} />
-              <span>
-                Your student data is securely uploaded to the server.
-              </span>
+              <span>Your student data is securely uploaded to the server.</span>
             </div>
           </div>
         )}
@@ -765,8 +791,7 @@ const StudentDataUpload = () => {
                 <div>
                   <h2>Existing Student Data</h2>
                   <p>
-                    Select a batch, branch and section to view uploaded
-                    students
+                    Select a batch, branch and section to view uploaded students
                   </p>
                 </div>
               </div>
@@ -867,7 +892,8 @@ const StudentDataUpload = () => {
 
                     <div>
                       <h3>
-                        {selectedDepartment} · Section {selectedSection} Students
+                        {selectedDepartment} · Section {selectedSection}{" "}
+                        Students
                       </h3>
                       <p>
                         Batch {selectedBatch} · Section {selectedSection}
@@ -895,9 +921,7 @@ const StudentDataUpload = () => {
                     >
                       <RefreshCw
                         size={17}
-                        className={
-                          loadingStudents ? "refresh-spin" : ""
-                        }
+                        className={loadingStudents ? "refresh-spin" : ""}
                       />
                     </button>
                   </div>
@@ -945,6 +969,7 @@ const StudentDataUpload = () => {
                         <th>Section</th>
                         <th>Batch</th>
                         <th>DOB</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
 
@@ -961,8 +986,7 @@ const StudentDataUpload = () => {
                           >
                             <td>
                               <span className="row-number">
-                                {(currentPage - 1) *
-                                  STUDENTS_PER_PAGE +
+                                {(currentPage - 1) * STUDENTS_PER_PAGE +
                                   index +
                                   1}
                               </span>
@@ -980,9 +1004,7 @@ const StudentDataUpload = () => {
                               </span>
                             </td>
 
-                            <td>
-                              {student.admissionNo || "-"}
-                            </td>
+                            <td>{student.admissionNo || "-"}</td>
 
                             <td>
                               <span className="email-text">
@@ -1008,24 +1030,32 @@ const StudentDataUpload = () => {
                               </span>
                             </td>
 
-                            <td>
-                              {student.batch || selectedBatch || "-"}
-                            </td>
+                            <td>{student.batch || selectedBatch || "-"}</td>
 
-                            <td>{student.dob || "-"}</td>
+                            <td>
+
+                              <span>{student.dob || "-"}</span>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="delete-student-button"
+                                onClick={() => handleDeleteStudent(student)}
+                                title={`Delete ${student.name || "student"}`}
+                                aria-label={`Delete ${student.name || "student"}`}
+                              >
+                                <Trash2 size={17} strokeWidth={2} />
+                              </button>
+
+                            </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td
-                            colSpan="11"
-                            className="empty-search"
-                          >
+                          <td colSpan="12" className="empty-search">
                             <Search size={30} />
                             <strong>No students found</strong>
-                            <span>
-                              Try another student name.
-                            </span>
+                            <span>Try another student name.</span>
                           </td>
                         </tr>
                       )}
@@ -1038,19 +1068,16 @@ const StudentDataUpload = () => {
                     <div className="pagination-info">
                       Showing{" "}
                       <strong>
-                        {(currentPage - 1) *
-                          STUDENTS_PER_PAGE +
-                          1}
+                        {(currentPage - 1) * STUDENTS_PER_PAGE + 1}
                       </strong>{" "}
                       -{" "}
                       <strong>
                         {Math.min(
                           currentPage * STUDENTS_PER_PAGE,
-                          filteredStudents.length
+                          filteredStudents.length,
                         )}
                       </strong>{" "}
-                      of{" "}
-                      <strong>{filteredStudents.length}</strong>
+                      of <strong>{filteredStudents.length}</strong>
                     </div>
 
                     <div className="pagination-controls">
@@ -1058,9 +1085,7 @@ const StudentDataUpload = () => {
                         type="button"
                         disabled={currentPage === 1}
                         onClick={() =>
-                          setCurrentPage((page) =>
-                            Math.max(1, page - 1)
-                          )
+                          setCurrentPage((page) => Math.max(1, page - 1))
                         }
                       >
                         <ChevronLeft size={17} />
@@ -1078,7 +1103,7 @@ const StudentDataUpload = () => {
                         disabled={currentPage === totalPages}
                         onClick={() =>
                           setCurrentPage((page) =>
-                            Math.min(totalPages, page + 1)
+                            Math.min(totalPages, page + 1),
                           )
                         }
                       >
@@ -1103,8 +1128,8 @@ const StudentDataUpload = () => {
                   <h3>Select Batch, Branch &amp; Section</h3>
 
                   <p>
-                    Choose the batch, branch and section above
-                    to view the existing records.
+                    Choose the batch, branch and section above to view the
+                    existing records.
                   </p>
                 </div>
               )}
@@ -1371,6 +1396,25 @@ const StudentDataUpload = () => {
           </div>
         </div>
       )}
+
+      {/* CUSTOM CONFIRM MODAL FOR STUDENT DELETION */}
+      <ConfirmModal
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Student Record?"
+        message={
+          deleteConfirm.student
+            ? `Are you sure you want to delete ${deleteConfirm.student.name || "this student"} (${deleteConfirm.student.admissionNo})?\n\nThis will permanently remove this student from the department database.`
+            : ""
+        }
+        confirmText="Delete Student"
+        cancelText="Cancel"
+        type="danger"
+        isLoading={deleteConfirm.isLoading}
+        onConfirm={confirmDeleteStudent}
+        onCancel={() =>
+          setDeleteConfirm({ isOpen: false, student: null, isLoading: false })
+        }
+      />
     </div>
   );
 };

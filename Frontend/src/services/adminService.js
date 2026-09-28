@@ -23,13 +23,45 @@ export const deleteScheduledExam = async (testId) => {
     return response.data;
 };
 
+// END SCHEDULED EXAM
+export const endScheduledExam = async (testId) => {
+    const response = await api.post(
+        `${API_URL}/schedule/end-test`,
+        {
+            testId: testId,
+        }
+    );
+
+    return response.data;
+};
+
+// RESUME STUDENT EXAM
+export const resumeStudentExam = async (payload) => {
+    const body =
+        typeof payload === "string"
+            ? { username: payload }
+            : {
+                  username: payload?.username,
+                  questionCode: payload?.questionCode,
+              };
+
+    const response = await api.post(
+        `${API_URL}/schedule/resume-student-exam`,
+        body
+    );
+
+    return response.data;
+};
+
 // UPLOAD QUESTIONS
 export const uploadQuestions = async ({
     questionCode,
+    type = "audio",
     audioFile,
+    passage,
+    passageFile,
     questionFile,
 }) => {
-
     const formData = new FormData();
 
     formData.append(
@@ -38,14 +70,37 @@ export const uploadQuestions = async ({
     );
 
     formData.append(
-        "audio",
-        audioFile
+        "type",
+        type
     );
 
-    formData.append(
-        "questions",
-        questionFile
-    );
+    if (audioFile) {
+        formData.append(
+            "audio",
+            audioFile
+        );
+    }
+
+    if (passage) {
+        formData.append(
+            "passage",
+            passage.trim()
+        );
+    }
+
+    if (passageFile) {
+        formData.append(
+            "passageFile",
+            passageFile
+        );
+    }
+
+    if (questionFile) {
+        formData.append(
+            "questions",
+            questionFile
+        );
+    }
 
     const response = await api.post(
         `${API_URL}/questionsupload`,
@@ -135,6 +190,16 @@ export const getExistingStudents = async ({
     );
 
     return response.data;
+};
+
+// Delete existing student data
+export const deleteStudent = async (admissionNo) => {
+  const response = await api.delete("/staff/delete-student", {
+    data: {
+      admissionNo: admissionNo,
+    },
+  });
+  return response.data;
 };
 
 
@@ -238,3 +303,13 @@ export const updateAcademicYear = async (
 
     return response.data;
 };
+export const deleteStaff = async (data) => {
+  const response = await api.post(
+    "/staff/deletestaff",
+    {
+      data,
+    }
+  );
+
+  return response.data;
+};  

@@ -16,6 +16,7 @@ import ExamLayout from "../layouts/ExamLayout";
 
 import Instruction from "../pages/student/StartTest";
 import AudioTest from "../pages/student/AudioTest";
+import ComprehensionTest from "../pages/student/ComprehensionTest";
 
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import StudentDashboard from "../pages/student/StudentDashboard";
@@ -66,6 +67,7 @@ export default function AppRoutes() {
             <Route index element={<Navigate to="instruction" replace/>}/>
             <Route path="instruction" element={<Instruction />}/>
             <Route path="audiotest" element={<AudioTest />}/>
+            <Route path="comprehensiontest" element={<ComprehensionTest />}/>
           </Route>
         </Route>
       </Route>
@@ -82,7 +84,7 @@ export default function AppRoutes() {
           <Route path="students" element={<Students />} />
           <Route path="facultyIncharge" element={<FacultyList />} />
           <Route path="studentData" element={<StudentDataUpload />} />
-          <Route path="StudentProfileAccess" element={<ProfileEdit />} />
+          <Route path="Admin_Controls" element={<ProfileEdit />} />
           <Route path="student-result" element={<StudentResult />} />
         </Route>
       </Route>

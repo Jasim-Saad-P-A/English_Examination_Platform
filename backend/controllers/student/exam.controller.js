@@ -1,5 +1,57 @@
 const { ObjectId } = require("mongodb");
 const { getDB } = require("../../config/db");
+const {
+  generateStudentExamPDF,
+} = require("../../service/student_result.service");
+const {
+  getISTDate,
+  getISTMinutes,
+  EXAM_START_MINUTES_IST,
+  EXAM_END_MINUTES_IST,
+} = require("../../helper/ist_converter");
+
+// =====================================================
+// SHUFFLE HELPERS (FISHER-YATES)
+// =====================================================
+const shuffleArray = (array) => {
+  if (!Array.isArray(array)) return [];
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
+const shuffleQuestionOptions = (options) => {
+  if (!options) return {};
+  if (Array.isArray(options)) {
+    const shuffledList = shuffleArray(options);
+    return shuffledList.map((opt, i) => {
+      if (typeof opt === "object" && opt !== null) {
+        return {
+          ...opt,
+          key: String.fromCharCode(65 + i),
+        };
+      }
+      return {
+        key: String.fromCharCode(65 + i),
+        value: String(opt),
+      };
+    });
+  }
+  if (typeof options === "object") {
+    const entries = Object.entries(options);
+    const shuffledValues = shuffleArray(entries.map(([_, val]) => String(val)));
+    const shuffledOptions = {};
+    shuffledValues.forEach((val, i) => {
+      const key = String.fromCharCode(65 + i);
+      shuffledOptions[key] = val;
+    });
+    return shuffledOptions;
+  }
+  return options;
+};
 
 // =====================================================
 // START EXAM
@@ -39,14 +91,39 @@ const startExam = async (req, res) => {
     }
 
     // =====================================================
-    // CHECK EXAM TIME
+    // CHECK EXAM TIME (8:30 AM to 5:00 PM IST)
     // =====================================================
 
     const now = new Date();
+    const istMinutesNow = getISTMinutes(now);
+
+    if (
+      istMinutesNow < EXAM_START_MINUTES_IST ||
+      istMinutesNow >= EXAM_END_MINUTES_IST
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Examinations are only permitted during College Timing.",
+      });
+    }
+
+    const istNow = getISTDate(now);
+    const secondsUntil5pmIST = Math.max(
+      0,
+      (EXAM_END_MINUTES_IST - istMinutesNow) * 60 - istNow.getSeconds()
+    );
 
     const startTime = exam.startTime ? new Date(exam.startTime) : null;
 
     const endTime = exam.endTime ? new Date(exam.endTime) : null;
+
+    if (exam.status === "Completed") {
+      return res.status(403).json({
+        success: false,
+        message: "This examination has been ended.",
+      });
+    }
 
     if (startTime && now < startTime) {
       return res.status(403).json({
@@ -132,8 +209,19 @@ const startExam = async (req, res) => {
     // GET QUESTION SET
     // =====================================================
 
+    const questionSetId =
+      exam.questionSetId instanceof ObjectId
+        ? exam.questionSetId
+        : ObjectId.isValid(exam.questionSetId)
+          ? new ObjectId(exam.questionSetId)
+          : null;
+
     const questionSet = await db.collection("questions").findOne({
-      _id: new ObjectId(exam.questionSetId),
+      $or: [
+        ...(questionSetId ? [{ _id: questionSetId }] : []),
+        { _id: String(exam.questionSetId) },
+        ...(exam.questionCode ? [{ questionCode: String(exam.questionCode).trim() }] : []),
+      ],
     });
 
     if (!questionSet) {
@@ -160,14 +248,17 @@ const startExam = async (req, res) => {
     const cie = exam.cie || null;
 
     // =====================================================
-    // REMOVE CORRECT ANSWERS
+    // REMOVE CORRECT ANSWERS & SHUFFLE QUESTIONS + OPTIONS
     // =====================================================
 
-    const questions = questionSet.questions.map((question) => ({
-      questionNo: question.questionNo,
-      question: question.question,
-      options: question.options,
+    const preparedQuestions = questionSet.questions.map((question, index) => ({
+      questionNo: question.questionNo != null ? question.questionNo : index + 1,
+      id: question.questionNo != null ? question.questionNo : index + 1,
+      question: question.question || question.questionText || "",
+      options: shuffleQuestionOptions(question.options),
     }));
+
+    const questions = shuffleArray(preparedQuestions);
 
     // =====================================================
     // CHECK PREVIOUS EXAM ATTEMPT
@@ -179,10 +270,38 @@ const startExam = async (req, res) => {
     });
 
     // =====================================================
-    // ALREADY SUBMITTED
-    // // =====================================================
+    // CHECK MALPRACTICE (DO NOT RESUME FOR MALPRACTICE)
+    // =====================================================
 
-    if (alreadyAttempted && alreadyAttempted.status === false) {
+    const malpracticeCount = await db.collection("malpractice").countDocuments({
+      testId: exam._id,
+      admissionNo: student.admissionNo,
+    });
+
+    if (
+      alreadyAttempted &&
+      (alreadyAttempted.result === "Malpractice" ||
+        alreadyAttempted.malpractice?.status === true ||
+        malpracticeCount >= 3)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Examination closed due to malpractice.",
+        result: "Malpractice",
+        malpractice: true,
+        status: false,
+      });
+    }
+
+    // =====================================================
+    // ALREADY SUBMITTED (AND NOT ALLOWED TO RESUME)
+    // =====================================================
+
+    if (
+      alreadyAttempted &&
+      alreadyAttempted.status === false &&
+      alreadyAttempted.allowResume !== true
+    ) {
       return res.status(403).json({
         success: false,
         message: "You have already attended this examination.",
@@ -191,13 +310,101 @@ const startExam = async (req, res) => {
     }
 
     // =====================================================
-    // EXAM ALREADY STARTED
+    // EXAM ALREADY STARTED OR UNLOCKED FOR RESUME
     // =====================================================
 
-    if (alreadyAttempted && alreadyAttempted.status === true) {
+    if (
+      alreadyAttempted &&
+      (alreadyAttempted.status === true || alreadyAttempted.allowResume === true)
+    ) {
+      if (alreadyAttempted.allowResume === true) {
+        // Single-use resume: reset permission on both collections immediately upon starting
+        await db.collection("exam").updateOne(
+          { _id: alreadyAttempted._id },
+          {
+            $set: {
+              status: true,
+              result: "Pending",
+              allowResume: false,
+              lastResumedAt: new Date(),
+              updatedAt: new Date(),
+            },
+          }
+        );
+
+        await db.collection("students").updateOne(
+          { admissionNo: student.admissionNo },
+          {
+            $set: {
+              allowResume: false,
+            },
+          }
+        );
+
+        const questionsToSend =
+          Array.isArray(alreadyAttempted.questions) &&
+          alreadyAttempted.questions.length > 0
+            ? alreadyAttempted.questions
+            : questions;
+
+        // Calculate remaining seconds based on previously recorded timeRemaining or time elapsed
+        const totalExamDurationSeconds = Number(exam.duration || 0) * 60;
+        let remainingSeconds = totalExamDurationSeconds;
+
+        if (
+          alreadyAttempted.timeRemaining != null &&
+          Number(alreadyAttempted.timeRemaining) > 0
+        ) {
+          remainingSeconds = Math.min(
+            Math.floor(Number(alreadyAttempted.timeRemaining)),
+            totalExamDurationSeconds
+          );
+        } else if (alreadyAttempted.startedAt) {
+          const lastActive =
+            alreadyAttempted.updatedAt ||
+            alreadyAttempted.submittedAt ||
+            alreadyAttempted.lastResumedAt ||
+            new Date();
+          const elapsed = Math.floor(
+            (new Date(lastActive) - new Date(alreadyAttempted.startedAt)) / 1000
+          );
+          if (elapsed > 0 && elapsed < totalExamDurationSeconds) {
+            remainingSeconds = totalExamDurationSeconds - elapsed;
+          }
+        }
+
+        // Cap remaining time so it does not exceed 5:00 PM IST
+        remainingSeconds = Math.max(
+          0,
+          Math.min(remainingSeconds, secondsUntil5pmIST)
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: "Exam resumed successfully.",
+          examId: alreadyAttempted._id,
+          testId: exam._id,
+          questionSetId: exam.questionSetId,
+          title: exam.title || null,
+          category: exam.category || null,
+          cie: cie,
+          type: exam.type || questionSet.type || "audio",
+          duration: exam.duration,
+          timeRemaining: remainingSeconds,
+          startedAt: alreadyAttempted.startedAt,
+          endTime: endTime,
+          totalQuestions: questionsToSend.length,
+          audioUrl: questionSet.audioUrl || null,
+          passage: questionSet.passage || alreadyAttempted.passage || null,
+          questions: questionsToSend,
+          savedAnswers: alreadyAttempted.answers || [],
+          resumed: true,
+        });
+      }
+
       return res.status(400).json({
         success: false,
-        message: "Exam already started.",
+        message: "Exam already started. Contact staff to resume.",
       });
     }
 
@@ -212,9 +419,15 @@ const startExam = async (req, res) => {
 
       questionSetId: exam.questionSetId,
 
+      questionCode: questionSet.questionCode || exam.questionCode || null,
+
       title: exam.title || null,
 
       category: exam.category || null,
+
+      type: exam.type || questionSet.type || "audio",
+
+      passage: questionSet.passage || null,
 
       // CIE I / II / III
       cie: cie,
@@ -235,6 +448,8 @@ const startExam = async (req, res) => {
 
       answers: [],
 
+      questions,
+
       totalQuestions: questions.length,
 
       obtainedMarks: 0,
@@ -253,6 +468,13 @@ const startExam = async (req, res) => {
       // true = exam active
       // false = exam submitted
       status: true,
+
+      timeRemaining: Math.max(
+        0,
+        Math.min(Number(exam.duration || 0) * 60, secondsUntil5pmIST)
+      ),
+
+      timeSpent: 0,
 
       startedAt: startedAt,
 
@@ -293,13 +515,22 @@ const startExam = async (req, res) => {
 
       duration: exam.duration,
 
+      timeRemaining: Math.max(
+        0,
+        Math.min(Number(exam.duration || 0) * 60, secondsUntil5pmIST)
+      ),
+
       startedAt: startedAt,
 
       endTime: endTime,
 
       totalQuestions: questions.length,
 
-      audioUrl: questionSet.audioUrl,
+      type: exam.type || questionSet.type || "audio",
+
+      passage: questionSet.passage || null,
+
+      audioUrl: questionSet.audioUrl || null,
 
       questions,
     });
@@ -308,7 +539,8 @@ const startExam = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to start exam.",
+      error: error.message || "Unexpected server error.",
     });
   }
 };
@@ -375,10 +607,14 @@ const submitExam = async (req, res) => {
       });
     }
 
-    if (examAttempt.status === false) {
+    if (examAttempt.status === false || examAttempt.result === "Malpractice") {
       return res.status(403).json({
         success: false,
-        message: "You have already submitted this examination.",
+        message:
+          examAttempt.result === "Malpractice"
+            ? "Examination closed due to malpractice."
+            : "You have already submitted this examination.",
+        result: examAttempt.result,
       });
     }
 
@@ -474,6 +710,7 @@ const submitExam = async (req, res) => {
             status: false,
             reason: "",
           },
+          allowResume: false,
           status: false,
           submittedAt: new Date().toLocaleString("en-IN", {
             timeZone: "Asia/Kolkata",
@@ -485,12 +722,34 @@ const submitExam = async (req, res) => {
       },
     );
 
+    await db.collection("students").updateOne(
+      { admissionNo: String(admissionNo).trim() },
+      {
+        $set: {
+          allowResume: false,
+        },
+      }
+    );
+
     // ----------------------------
     // Response
     // ----------------------------
     const updatedExam = await db.collection("exam").findOne({
       _id: examAttempt._id,
     });
+
+    // Send email to student on exam submission (for non-university exams)
+    const isUniversity =
+      String(examAttempt.category || "").trim().toLowerCase() === "university";
+
+    if (!isUniversity && examAttempt.testId && admissionNo) {
+      generateStudentExamPDF(examAttempt.testId, admissionNo).catch((err) => {
+        console.error(
+          `[SUBMIT EXAM] Error sending result mail for ${admissionNo}:`,
+          err.message
+        );
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -502,7 +761,8 @@ const submitExam = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to load exam.",
+      error: error.message || "Unexpected server error.",
     });
   }
 };
@@ -510,10 +770,69 @@ const syncExam = async (req, res) => {
   try {
     const db = getDB();
 
-    const { testId, admissionNo, questionNo, studentAnswer } = req.body;
+    const { testId, admissionNo, questionNo, studentAnswer, timeRemaining } = req.body;
+
+    const now = new Date();
+    const istMinutesNow = getISTMinutes(now);
+
+    if (
+      istMinutesNow < EXAM_START_MINUTES_IST ||
+      istMinutesNow >= EXAM_END_MINUTES_IST
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Examination hours have ended (Examinations are restricted to 8:30 AM - 5:00 PM IST).",
+      });
+    }
 
     // ----------------------------
-    // Validation
+    // Handle time-only sync/heartbeat
+    // ----------------------------
+    if (questionNo == null && timeRemaining != null) {
+      if (!testId || !admissionNo || !ObjectId.isValid(testId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid testId and admissionNo are required.",
+        });
+      }
+
+      const existingExam = await db.collection("exam").findOne({
+        testId: new ObjectId(testId),
+        admissionNo: String(admissionNo).trim(),
+      });
+
+      if (existingExam?.result === "Malpractice") {
+        return res.status(403).json({
+          success: false,
+          message: "Examination closed due to malpractice.",
+          result: "Malpractice",
+        });
+      }
+
+      const remainingSecs = Math.max(0, Math.floor(Number(timeRemaining)));
+      await db.collection("exam").updateOne(
+        {
+          testId: new ObjectId(testId),
+          admissionNo: String(admissionNo).trim(),
+          status: true,
+        },
+        {
+          $set: {
+            timeRemaining: remainingSecs,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Exam time synced successfully.",
+      });
+    }
+
+    // ----------------------------
+    // Validation for question answer sync
     // ----------------------------
     if (
       !testId ||
@@ -703,10 +1022,14 @@ const syncExam = async (req, res) => {
     // 12. CHECK SUBMITTED
     // =====================================================
 
-    if (examAttempt.status === false) {
+    if (examAttempt.status === false || examAttempt.result === "Malpractice") {
       return res.status(403).json({
         success: false,
-        message: "Exam has already been submitted.",
+        message:
+          examAttempt.result === "Malpractice"
+            ? "Examination closed due to malpractice."
+            : "Exam has already been submitted.",
+        result: examAttempt.result,
       });
     }
 
@@ -753,6 +1076,9 @@ const syncExam = async (req, res) => {
             "answers.$.studentAnswer": String(studentAnswer)
               .trim()
               .toUpperCase(),
+            ...(timeRemaining != null && !isNaN(Number(timeRemaining))
+              ? { timeRemaining: Math.max(0, Math.floor(Number(timeRemaining))) }
+              : {}),
             updatedAt: new Date(),
           },
         },
@@ -776,9 +1102,10 @@ const syncExam = async (req, res) => {
             },
           },
           $set: {
-            updatedAt: new Date().toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
-            }),
+            ...(timeRemaining != null && !isNaN(Number(timeRemaining))
+              ? { timeRemaining: Math.max(0, Math.floor(Number(timeRemaining))) }
+              : {}),
+            updatedAt: new Date(),
           },
         },
       );
@@ -816,7 +1143,8 @@ const syncExam = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to sync exam.",
+      error: error.message || "Unexpected server error.",
     });
   }
 };

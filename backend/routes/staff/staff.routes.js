@@ -13,7 +13,7 @@ const {
 
 const student_upload_Middleware = require("../../middleware/student_upload_middleware");
 const {
-  studentsUpload,
+  studentsUpload,deleteStudent
 } = require("../../controllers/admin/student.controller");
 const { updateStudent } = require("../../controllers/admin/student.controller");
 const scheduleRoutes = require("./schedule.routes");
@@ -26,6 +26,7 @@ const {
 const {
   updateStaff,
   getStaff,
+  deleteStaff,
 } = require("../../controllers/admin/staff.controller");
 const {
   updateAcademicYear,
@@ -55,6 +56,7 @@ router.get(
 // Upload Student Excel
 router.post("/studentsupload",roleByAccess(["admin"]),student_upload_Middleware, studentsUpload);
 router.put("/studentsupdate", roleByAccess(["admin"]),student_upload_Middleware, updateStudent);
+router.delete("/delete-student", roleByAccess(["admin"]), deleteStudent);
 // Upload Audio + Excel
 router.post(
   "/questionsupload",
@@ -71,6 +73,19 @@ router.delete(
 router.post(
   "/exam-results",
   roleByAccess(["admin", "staff"]),
+  (req, res, next) => {
+    const category = req.body?.category || req.query?.category;
+    if (
+      String(category || "").trim().toLowerCase() === "university" &&
+      req.user?.role !== "admin"
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "University examination reports can only be downloaded by administrators.",
+      });
+    }
+    next();
+  },
   generateExamReport,
 );
 router.post(
@@ -80,6 +95,7 @@ router.post(
 );
 router.get("/getstaff", roleByAccess(["admin"]), getStaff);
 router.post("/updatestaff", roleByAccess(["admin"]), updateStaff);
+router.post("/deletestaff", roleByAccess(["admin"]), deleteStaff);
 router.use("/schedule", scheduleRoutes);
 
 module.exports = router;

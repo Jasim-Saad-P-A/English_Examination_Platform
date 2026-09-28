@@ -43,27 +43,55 @@ const questions_upload_Middleware = (req, res, next) => {
 
   busboy.on("finish", async () => {
     try {
-      const { questionCode } = req.body;
-      const { audio, questions } = req.files;
+      const { questionCode, type } = req.body;
+      const { audio, questions, passageFile } = req.files;
+      const examType = String(type || "audio").trim().toLowerCase();
 
-      if (!questionCode) {
+      if (!questionCode || !questionCode.trim()) {
         return res.status(400).json({
           success: false,
           message: "questionCode is required",
         });
       }
 
-      if (!audio) {
-        return res.status(400).json({
-          success: false,
-          message: "Audio file is required",
-        });
-      }
-
       if (!questions) {
         return res.status(400).json({
           success: false,
-          message: "Questions file is required",
+          message: "Questions Excel file is required",
+        });
+      }
+
+      if (examType === "comprehension") {
+        let passage = (req.body.passage || "").trim();
+
+        // If a passage file (.txt or .md) was uploaded, read text from buffer
+        if (!passage && passageFile && passageFile.buffer) {
+          passage = passageFile.buffer.toString("utf-8").trim();
+        }
+
+        if (!passage) {
+          return res.status(400).json({
+            success: false,
+            message: "Reading passage / paragraph text is required for comprehension exam.",
+          });
+        }
+
+        req.uploadedData = {
+          questionCode: questionCode.trim(),
+          type: "comprehension",
+          passage,
+          audio: null,
+          audioDurationMinutes: 0,
+        };
+
+        return next();
+      }
+
+      // Default: Audio Listening Comprehension
+      if (!audio) {
+        return res.status(400).json({
+          success: false,
+          message: "Audio file is required for audio examination.",
         });
       }
 
@@ -86,13 +114,15 @@ const questions_upload_Middleware = (req, res, next) => {
       // Upload audio to S3
       const uploadedAudio = await uploadToS3(
         audio,
-        `questions/${questionCode}`,
+        `questions/${questionCode.trim()}`,
       );
 
       req.uploadedData = {
-        questionCode,
+        questionCode: questionCode.trim(),
+        type: "audio",
         audio: uploadedAudio,
         audioDurationMinutes,
+        passage: null,
       };
 
       next();
